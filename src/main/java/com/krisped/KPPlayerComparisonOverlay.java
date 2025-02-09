@@ -21,8 +21,8 @@ import net.runelite.client.ui.overlay.components.PanelComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 import net.runelite.client.util.Text;
 
-class KPPlayerComparisonOverlay extends Overlay {
-
+class KPPlayerComparisonOverlay extends Overlay
+{
     private static final Color HIGHER_STAT_TEXT_COLOR = Color.GREEN;
     private static final Color LOWER_STAT_TEXT_COLOR = Color.RED;
     private static final Color NEUTRAL_STAT_TEXT_COLOR = Color.WHITE;
@@ -65,7 +65,6 @@ class KPPlayerComparisonOverlay extends Overlay {
         this.plugin = plugin;
         this.config = config;
         this.hiscoreManager = hiscoreManager;
-
         setPosition(OverlayPosition.BOTTOM_LEFT);
         setLayer(OverlayLayer.ABOVE_WIDGETS);
         addMenuEntry(RUNELITE_OVERLAY_CONFIG, OPTION_CONFIGURE, "[KP] Opponent Information overlay");

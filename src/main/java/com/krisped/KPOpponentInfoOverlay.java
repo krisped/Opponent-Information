@@ -10,18 +10,19 @@ import java.awt.Rectangle;
 import javax.inject.Inject;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
-import static net.runelite.api.MenuAction.RUNELITE_OVERLAY_CONFIG;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.NPC;
 import net.runelite.api.NPCComposition;
 import net.runelite.api.ParamID;
 import net.runelite.api.Player;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
+import net.runelite.api.kit.KitType;
 import net.runelite.client.game.NPCManager;
 import net.runelite.client.hiscore.HiscoreManager;
 import net.runelite.client.hiscore.HiscoreResult;
 import net.runelite.client.hiscore.HiscoreSkill;
-import static net.runelite.client.ui.overlay.OverlayManager.OPTION_CONFIGURE;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.ComponentConstants;
@@ -32,7 +33,6 @@ import net.runelite.client.util.Text;
 class KPOpponentInfoOverlay extends OverlayPanel {
 
     private static final Color HP_GREEN = new Color(0, 146, 54, 230);
-    // Bright red color for full red effect
     private static final Color HP_RED = new Color(255, 0, 0, 230);
     private static final Color HP_YELLOW = new Color(255, 255, 0, 230);
 
@@ -41,6 +41,9 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     private final KPOpponentInfoConfig config;
     private final HiscoreManager hiscoreManager;
     private final NPCManager npcManager;
+
+    @Inject
+    private ItemManager itemManager;
 
     private Integer lastMaxHealth;
     private int lastRatio = 0;
@@ -61,32 +64,29 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         this.config = config;
         this.hiscoreManager = hiscoreManager;
         this.npcManager = npcManager;
-
         setPosition(OverlayPosition.TOP_LEFT);
         setPriority(PRIORITY_HIGH);
-
         panelComponent.setBorder(new Rectangle(2, 2, 2, 2));
         panelComponent.setGap(new Point(0, 2));
-        addMenuEntry(RUNELITE_OVERLAY_CONFIG, OPTION_CONFIGURE, "[KP] Opponent Information overlay");
+        addMenuEntry(net.runelite.api.MenuAction.RUNELITE_OVERLAY_CONFIG,
+                net.runelite.client.ui.overlay.OverlayManager.OPTION_CONFIGURE,
+                "[KP] Opponent Information overlay");
     }
 
     @Override
     public Dimension render(Graphics2D graphics)
     {
         final Actor opponent = plugin.getLastOpponent();
-
         if (opponent == null)
         {
             opponentName = null;
             return null;
         }
-
         if (opponent.getName() != null && opponent.getHealthScale() > 0)
         {
             lastRatio = opponent.getHealthRatio();
             lastHealthScale = opponent.getHealthScale();
             opponentName = Text.removeTags(opponent.getName());
-
             lastMaxHealth = null;
             if (opponent instanceof NPC)
             {
@@ -114,23 +114,21 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 }
             }
         }
-
         if (opponentName == null || hasHpHud(opponent) || !config.showOpponentHealthOverlay())
         {
             return null;
         }
-
         final FontMetrics fontMetrics = graphics.getFontMetrics();
         int panelWidth = Math.max(ComponentConstants.STANDARD_WIDTH,
                 fontMetrics.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER * 2);
         panelComponent.setPreferredSize(new Dimension(panelWidth, 0));
         panelComponent.getChildren().add(TitleComponent.builder().text(opponentName).build());
 
+        // Legg til progress bar for HP
         if (lastRatio >= 0 && lastHealthScale > 0)
         {
             final ProgressBarComponent progressBarComponent = new ProgressBarComponent();
             progressBarComponent.setBackgroundColor(new Color(0, 0, 0, 150));
-
             final HitpointsDisplayStyle displayStyle = config.hitpointsDisplayStyle();
             double healthPercentage = 0;
             int currentHealthAbsolute = 0;
@@ -173,7 +171,6 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 healthPercentage = lastRatio / (double) lastHealthScale;
             }
 
-            // Determine color based on dynamic settings
             Color finalColor = HP_GREEN;
             if (config.dynamicHealthColor())
             {
@@ -213,7 +210,6 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 }
             }
 
-            // Blink effect if enabled
             if (config.enableBlink())
             {
                 boolean blinkActive = false;
@@ -247,17 +243,134 @@ class KPOpponentInfoOverlay extends OverlayPanel {
 
             progressBarComponent.setForegroundColor(finalColor);
 
-            if ((displayStyle == HitpointsDisplayStyle.HITPOINTS || displayStyle == HitpointsDisplayStyle.BOTH)
+            if ((config.hitpointsDisplayStyle() == HitpointsDisplayStyle.HITPOINTS ||
+                    config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH)
                     && lastMaxHealth != null)
             {
-                ProgressBarComponent.LabelDisplayMode mode = displayStyle == HitpointsDisplayStyle.BOTH ?
+                ProgressBarComponent.LabelDisplayMode mode = config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH ?
                         ProgressBarComponent.LabelDisplayMode.BOTH :
                         ProgressBarComponent.LabelDisplayMode.FULL;
                 progressBarComponent.setLabelDisplayMode(mode);
             }
             panelComponent.getChildren().add(progressBarComponent);
         }
+
+        // Legg til ekstra linje for target combat display dersom aktivert
+        if (plugin.getLastOpponent() instanceof Player)
+        {
+            Player targetPlayer = (Player) plugin.getLastOpponent();
+            KPOpponentInfoConfig.TargetCombatDisplay tcDisplay = config.targetCombatDisplay();
+            if (tcDisplay != KPOpponentInfoConfig.TargetCombatDisplay.NONE)
+            {
+                String attackStyle = determineAttackStyle(targetPlayer);
+                String weaponName = determineWeaponName(targetPlayer);
+                if (tcDisplay == KPOpponentInfoConfig.TargetCombatDisplay.ATTACK_STYLE)
+                {
+                    panelComponent.getChildren().add(
+                            TitleComponent.builder()
+                                    .text("Attack: " + attackStyle)
+                                    .color(new Color(173, 216, 230)) // Lys blå
+                                    .build());
+                }
+                else if (tcDisplay == KPOpponentInfoConfig.TargetCombatDisplay.WEAPON)
+                {
+                    panelComponent.getChildren().add(
+                            TitleComponent.builder()
+                                    .text("Weapon: " + weaponName)
+                                    .color(new Color(173, 216, 230))
+                                    .build());
+                }
+                else if (tcDisplay == KPOpponentInfoConfig.TargetCombatDisplay.BOTH)
+                {
+                    panelComponent.getChildren().add(
+                            TitleComponent.builder()
+                                    .text("Attack: " + attackStyle)
+                                    .color(new Color(173, 216, 230))
+                                    .build());
+                    panelComponent.getChildren().add(
+                            TitleComponent.builder()
+                                    .text("Weapon: " + weaponName)
+                                    .color(new Color(173, 216, 230))
+                                    .build());
+                }
+            }
+        }
+
+        // Legg til ekstra linje for risiko dersom Risk Display Option er OVERLAY eller BOTH
+        KPOpponentInfoConfig.RiskDisplayOption riskOption = config.riskDisplayOption();
+        if ((riskOption == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
+                riskOption == KPOpponentInfoConfig.RiskDisplayOption.BOTH) &&
+                plugin.getRiskValue() > 0)
+        {
+            String riskString = "Risk: " + formatWealth(plugin.getRiskValue());
+            panelComponent.getChildren().add(
+                    TitleComponent.builder()
+                            .text(riskString)
+                            .color(new Color(204, 153, 0)) // Mørk gul/gull
+                            .build());
+        }
+
         return super.render(graphics);
+    }
+
+    private static String formatWealth(long value)
+    {
+        if (value >= 1_000_000)
+        {
+            double millions = value / 1_000_000.0;
+            return String.format("%.2fm", millions);
+        }
+        else if (value >= 1_000)
+        {
+            double thousands = value / 1_000.0;
+            return String.format("%.2fk", thousands);
+        }
+        else
+        {
+            return Long.toString(value);
+        }
+    }
+
+    private String determineAttackStyle(Player player)
+    {
+        int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
+        if (weaponId == -1)
+        {
+            return "Melee";
+        }
+        ItemComposition comp = itemManager.getItemComposition(weaponId);
+        if (comp == null)
+        {
+            return "Melee";
+        }
+        String name = comp.getName().toLowerCase();
+        if (name.contains("bow") || name.contains("crossbow") || name.contains("javelin"))
+        {
+            return "Ranged";
+        }
+        else if (name.contains("staff") || name.contains("wand") || name.contains("scepter") || name.contains("blowpipe"))
+        {
+            return "Magic";
+        }
+        else
+        {
+            return "Melee";
+        }
+    }
+
+    private String determineWeaponName(Player player)
+    {
+        int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
+        if (weaponId == -1)
+        {
+            return "None";
+        }
+        ItemComposition comp = itemManager.getItemComposition(weaponId);
+        if (comp == null)
+        {
+            return "Unknown";
+        }
+        return comp.getName();
     }
 
     private boolean hasHpHud(Actor opponent)
