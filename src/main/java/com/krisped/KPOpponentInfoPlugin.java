@@ -2,6 +2,7 @@ package com.krisped;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Provides;
+import java.awt.Color;
 import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -84,6 +85,17 @@ public class KPOpponentInfoPlugin extends Plugin {
 
     public void setRiskValue(long riskValue) {
         this.riskValue = riskValue;
+    }
+
+    // Nytt felt for å lagre siste dynamiske fargen (brukes av highlight)
+    private Color lastDynamicColor = Color.GREEN;
+
+    public void setLastDynamicColor(Color color) {
+        this.lastDynamicColor = color;
+    }
+
+    public Color getLastDynamicColor() {
+        return lastDynamicColor;
     }
 
     @Provides

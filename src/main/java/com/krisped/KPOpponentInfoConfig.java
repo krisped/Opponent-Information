@@ -10,6 +10,7 @@ import net.runelite.client.config.ConfigSection;
 @ConfigGroup("kp_opponentinfo")
 public interface KPOpponentInfoConfig extends Config
 {
+    // Generelle innstillinger
     @ConfigItem(
             keyName = "lookupOnInteraction",
             name = "Lookup players on interaction",
@@ -70,50 +71,20 @@ public interface KPOpponentInfoConfig extends Config
     String extendedFeatures = "extendedFeatures";
 
     @ConfigItem(
-            keyName = "riskDisplayOption",
-            name = "Risk Display Option",
-            description = "Select where to display player's potential risk: None, Chat, Overlay, or Both.",
-            position = 0,
-            section = extendedFeatures
-    )
-    default RiskDisplayOption riskDisplayOption() {
-        return RiskDisplayOption.NONE;
-    }
-
-    @ConfigItem(
             keyName = "targetCombatDisplay",
             name = "Target Combat Display",
-            description = "Select how to display target's combat details: None, Attack Style, Weapon, or Both.",
-            position = 1,
+            description = "Select how to display target's combat details: None, Attack Style, Wep, or Both.",
+            position = 0,
             section = extendedFeatures
     )
     default TargetCombatDisplay targetCombatDisplay() {
         return TargetCombatDisplay.NONE;
     }
 
-    enum RiskDisplayOption {
-        NONE("None"),
-        CHAT("Chat"),
-        OVERLAY("Overlay"),
-        BOTH("Both");
-
-        private final String display;
-        RiskDisplayOption(String display) {
-            this.display = display;
-        }
-        public String getDisplay() {
-            return display;
-        }
-        @Override
-        public String toString() {
-            return display;
-        }
-    }
-
     enum TargetCombatDisplay {
         NONE("None"),
         ATTACK_STYLE("Attack Style"),
-        WEAPON("Weapon"),
+        WEAPON("Wep"),
         BOTH("Both");
 
         private final String display;
@@ -243,11 +214,153 @@ public interface KPOpponentInfoConfig extends Config
         }
     }
 
-    // Highlight Section - Modified Dropdown Menus and Color Selections
+    // Risk Settings Section
+    @ConfigSection(
+            name = "Risk Settings",
+            description = "Settings for risk thresholds and colors.",
+            position = 7,
+            closedByDefault = true
+    )
+    String riskSettings = "riskSettings";
+
+    @ConfigItem(
+            keyName = "riskDisplayOption",
+            name = "Risk Display Option",
+            description = "Select where to display risk: None, Chat, Overlay, or Both.",
+            position = 0,
+            section = riskSettings
+    )
+    default RiskDisplayOption riskDisplayOption() {
+        return RiskDisplayOption.NONE;
+    }
+
+    enum RiskDisplayOption {
+        NONE("None"),
+        CHAT("Chat"),
+        OVERLAY("Overlay"),
+        BOTH("Both");
+
+        private final String display;
+        RiskDisplayOption(String display) {
+            this.display = display;
+        }
+        public String getDisplay() {
+            return display;
+        }
+        @Override
+        public String toString() {
+            return display;
+        }
+    }
+
+    @ConfigItem(
+            keyName = "lowRiskThreshold",
+            name = "Low Risk Threshold",
+            description = "Risk threshold for low value items.",
+            position = 1,
+            section = riskSettings
+    )
+    default int lowRiskThreshold() {
+        return 20000;
+    }
+
+    @Alpha
+    @ConfigItem(
+            keyName = "lowRiskColor",
+            name = "Low Risk Color",
+            description = "Color for risk below the low threshold (default white).",
+            position = 2,
+            section = riskSettings
+    )
+    default Color lowRiskColor() {
+        return Color.WHITE;
+    }
+
+    @ConfigItem(
+            keyName = "highRiskThreshold",
+            name = "High Risk Threshold",
+            description = "Risk threshold for high value items (risk over this becomes green).",
+            position = 3,
+            section = riskSettings
+    )
+    default int highRiskThreshold() {
+        return 1000000;
+    }
+
+    @ConfigItem(
+            keyName = "mediumRiskThreshold",
+            name = "Medium Risk Threshold",
+            description = "Risk threshold for medium value items (risk over low but under high becomes blue).",
+            position = 5,
+            section = riskSettings
+    )
+    default int mediumRiskThreshold() {
+        return 20000; // For eksempel: risk ≥ lowRiskThreshold og under highRiskThreshold = blå
+    }
+
+    @Alpha
+    @ConfigItem(
+            keyName = "mediumRiskColor",
+            name = "Medium Risk Color",
+            description = "Color for risk between low and high thresholds (blue).",
+            position = 4,
+            section = riskSettings
+    )
+    default Color mediumRiskColor() {
+        return new Color(0, 0, 255, 255); // blå
+    }
+
+    @Alpha
+    @ConfigItem(
+            keyName = "highRiskColor",
+            name = "High Risk Color",
+            description = "Color for risk over high threshold and under insane threshold (green).",
+            position = 6,
+            section = riskSettings
+    )
+    default Color highRiskColor() {
+        return new Color(0, 255, 0, 255); // grønn
+    }
+
+    @ConfigItem(
+            keyName = "insaneRiskThreshold",
+            name = "Insane Risk Threshold",
+            description = "Risk threshold for insane value items (risk over this becomes pink).",
+            position = 7,
+            section = riskSettings
+    )
+    default int insaneRiskThreshold() {
+        return 10000000;
+    }
+
+    @Alpha
+    @ConfigItem(
+            keyName = "insaneRiskColor",
+            name = "Insane Risk Color",
+            description = "Color for risk over insane threshold (pink).",
+            position = 8,
+            section = riskSettings
+    )
+    default Color insaneRiskColor() {
+        return new Color(255, 105, 180, 255); // rosa
+    }
+
+    @ConfigItem(
+            keyName = "enableColorRisk",
+            name = "Enable Color Risk",
+            description = "If enabled, risk value is shown in a color based on thresholds; otherwise, it is always white.",
+            position = 9,
+            section = riskSettings
+    )
+    default boolean enableColorRisk() {
+        return false;
+    }
+
+    // Highlight Section
     @ConfigSection(
             name = "Highlight",
             description = "Options for highlighting the opponent.",
-            position = 7,
+            position = 8,
             closedByDefault = true
     )
     String highlightSection = "highlightSection";
@@ -264,12 +377,23 @@ public interface KPOpponentInfoConfig extends Config
         return HighlightMode.NONE;
     }
 
+    @ConfigItem(
+            keyName = "outlineBlink",
+            name = "Outline Blink",
+            description = "Enable blink effect for outline highlight (static mode only).",
+            position = 1,
+            section = highlightSection
+    )
+    default boolean outlineBlink() {
+        return false;
+    }
+
     @Alpha
     @ConfigItem(
             keyName = "outlineHighlightColor",
             name = "Outline Color",
             description = "Color for outline highlight in Static mode.",
-            position = 1,
+            position = 2,
             section = highlightSection
     )
     default Color outlineHighlightColor() {
@@ -281,11 +405,22 @@ public interface KPOpponentInfoConfig extends Config
             keyName = "hullHighlightMode",
             name = "Hull Highlight",
             description = "Select mode for hull highlight: None, Static, or Dynamic.",
-            position = 2,
+            position = 3,
             section = highlightSection
     )
     default HighlightMode hullHighlightMode() {
         return HighlightMode.NONE;
+    }
+
+    @ConfigItem(
+            keyName = "hullBlink",
+            name = "Hull Blink",
+            description = "Enable blink effect for hull highlight (static mode only).",
+            position = 4,
+            section = highlightSection
+    )
+    default boolean hullBlink() {
+        return false;
     }
 
     @Alpha
@@ -293,7 +428,7 @@ public interface KPOpponentInfoConfig extends Config
             keyName = "hullHighlightColor",
             name = "Hull Color",
             description = "Color for hull highlight in Static mode.",
-            position = 3,
+            position = 5,
             section = highlightSection
     )
     default Color hullHighlightColor() {
@@ -305,11 +440,22 @@ public interface KPOpponentInfoConfig extends Config
             keyName = "tileHighlightMode",
             name = "Tile Highlight",
             description = "Select mode for tile highlight: None, Static, or Dynamic.",
-            position = 4,
+            position = 6,
             section = highlightSection
     )
     default HighlightMode tileHighlightMode() {
         return HighlightMode.NONE;
+    }
+
+    @ConfigItem(
+            keyName = "tileBlink",
+            name = "Tile Blink",
+            description = "Enable blink effect for tile highlight (static mode only).",
+            position = 7,
+            section = highlightSection
+    )
+    default boolean tileBlink() {
+        return false;
     }
 
     @Alpha
@@ -317,7 +463,7 @@ public interface KPOpponentInfoConfig extends Config
             keyName = "tileHighlightColor",
             name = "Tile Color",
             description = "Color for tile highlight in Static mode.",
-            position = 5,
+            position = 8,
             section = highlightSection
     )
     default Color tileHighlightColor() {

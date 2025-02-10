@@ -26,6 +26,7 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.ComponentConstants;
+import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.ProgressBarComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 import net.runelite.client.util.Text;
@@ -228,7 +229,8 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 {
                     blinkActive = (healthPercentage * 100) < config.blinkThresholdValue();
                 }
-                if (blinkActive)
+                // I dynamic modus skal vi alltid bruke statusbarens farge uten dimming
+                if (!config.dynamicHealthColor() && blinkActive)
                 {
                     long time = System.currentTimeMillis();
                     if ((time / 500) % 2 == 0)
@@ -253,9 +255,10 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 progressBarComponent.setLabelDisplayMode(mode);
             }
             panelComponent.getChildren().add(progressBarComponent);
+            plugin.setLastDynamicColor(finalColor);
         }
 
-        // Legg til ekstra linje for target combat display dersom aktivert
+        // Vis målrettet combat details (Attack/Wep)
         if (plugin.getLastOpponent() instanceof Player)
         {
             Player targetPlayer = (Player) plugin.getLastOpponent();
@@ -269,14 +272,14 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                     panelComponent.getChildren().add(
                             TitleComponent.builder()
                                     .text("Attack: " + attackStyle)
-                                    .color(new Color(173, 216, 230)) // Lys blå
+                                    .color(new Color(173, 216, 230))
                                     .build());
                 }
                 else if (tcDisplay == KPOpponentInfoConfig.TargetCombatDisplay.WEAPON)
                 {
                     panelComponent.getChildren().add(
                             TitleComponent.builder()
-                                    .text("Weapon: " + weaponName)
+                                    .text("Wep: " + weaponName)
                                     .color(new Color(173, 216, 230))
                                     .build());
                 }
@@ -289,46 +292,49 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                                     .build());
                     panelComponent.getChildren().add(
                             TitleComponent.builder()
-                                    .text("Weapon: " + weaponName)
+                                    .text("Wep: " + weaponName)
                                     .color(new Color(173, 216, 230))
                                     .build());
                 }
             }
         }
 
-        // Legg til ekstra linje for risiko dersom Risk Display Option er OVERLAY eller BOTH
-        KPOpponentInfoConfig.RiskDisplayOption riskOption = config.riskDisplayOption();
-        if ((riskOption == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
-                riskOption == KPOpponentInfoConfig.RiskDisplayOption.BOTH) &&
-                plugin.getRiskValue() > 0)
+        // --- Risk Check med re-check dersom ingen risk er funnet ---
+        if (config.riskDisplayOption() != KPOpponentInfoConfig.RiskDisplayOption.NONE)
         {
-            String riskString = "Risk: " + formatWealth(plugin.getRiskValue());
-            panelComponent.getChildren().add(
-                    TitleComponent.builder()
-                            .text(riskString)
-                            .color(new Color(204, 153, 0)) // Mørk gul/gull
-                            .build());
+            long riskValue = plugin.getRiskValue();
+            if (riskValue == 0) {
+                riskValue = computeRisk((Player)opponent);
+                if (riskValue > 0) {
+                    plugin.setRiskValue(riskValue);
+                }
+            }
+            if (riskValue > 0)
+            {
+                Color riskColor = Color.WHITE;
+                if (config.enableColorRisk()) {
+                    if (riskValue < config.lowRiskThreshold()) {
+                        riskColor = Color.WHITE;
+                    } else if (riskValue < config.highRiskThreshold()) {
+                        riskColor = config.mediumRiskColor();
+                    } else if (riskValue < config.insaneRiskThreshold()) {
+                        riskColor = config.highRiskColor();
+                    } else {
+                        riskColor = config.insaneRiskColor();
+                    }
+                }
+                // Bruk LineComponent for å vise "Risk:" og beløpet i to farger, sentrert
+                panelComponent.getChildren().add(
+                        LineComponent.builder()
+                                .left("Risk:")
+                                .leftColor(Color.WHITE)
+                                .right(formatWealth(riskValue) + " GP")
+                                .rightColor(riskColor)
+                                .build()
+                );
+            }
         }
-
         return super.render(graphics);
-    }
-
-    private static String formatWealth(long value)
-    {
-        if (value >= 1_000_000)
-        {
-            double millions = value / 1_000_000.0;
-            return String.format("%.2fm", millions);
-        }
-        else if (value >= 1_000)
-        {
-            double thousands = value / 1_000.0;
-            return String.format("%.2fk", thousands);
-        }
-        else
-        {
-            return Long.toString(value);
-        }
     }
 
     private String determineAttackStyle(Player player)
@@ -384,5 +390,40 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                     opponentId == npc.getComposition().getId();
         }
         return false;
+    }
+
+    // Beregn total risk basert på spillerens utstyr
+    private long computeRisk(Player opponent)
+    {
+        long totalWealth = 0;
+        for (KitType kitType : KitType.values())
+        {
+            int itemId = opponent.getPlayerComposition().getEquipmentId(kitType);
+            if (itemId != -1)
+            {
+                long price = itemManager.getItemPrice(itemId);
+                totalWealth += price;
+            }
+        }
+        return totalWealth;
+    }
+
+    // Formatterer risk-verdien:
+    // < 1000: vis tallet.
+    // < 1 000 000: vis tusen som heltall med "k" (f.eks. 934k)
+    // ≥ 1 000 000: vis med én desimal med komma (f.eks. 1,2m)
+    private static String formatWealth(long value)
+    {
+        if (value < 1000) {
+            return Long.toString(value);
+        } else if (value < 1000000) {
+            long thousands = value / 1000;
+            return thousands + "k";
+        } else {
+            double millions = value / 1000000.0;
+            String formatted = String.format("%.1f", millions);
+            formatted = formatted.replace('.', ',');
+            return formatted + "m";
+        }
     }
 }

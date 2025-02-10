@@ -11,6 +11,8 @@ import net.runelite.client.eventbus.Subscribe;
 import javax.inject.Inject;
 import java.text.NumberFormat;
 import java.util.Locale;
+import java.awt.Color;
+import net.runelite.client.util.Text;
 
 public class PlayerGearChecker
 {
@@ -31,7 +33,6 @@ public class PlayerGearChecker
     @Subscribe
     public void onInteractingChanged(InteractingChanged event)
     {
-        // Hvis Risk Display Option er NONE, gjør ingenting
         if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.NONE)
         {
             return;
@@ -40,7 +41,6 @@ public class PlayerGearChecker
         {
             return;
         }
-
         long now = System.currentTimeMillis();
         int cooldown = config.overlayDisplayDuration() * 1000;
         if (now - lastGearMessageTime < cooldown)
@@ -48,35 +48,23 @@ public class PlayerGearChecker
             return;
         }
         lastGearMessageTime = now;
-
         Player opponent = (Player) event.getTarget();
         long totalWealth = 0;
-        for (KitType kitType : KitType.values())
-        {
+        for (KitType kitType : KitType.values()) {
             int itemId = opponent.getPlayerComposition().getEquipmentId(kitType);
-            if (itemId != -1)
-            {
+            if (itemId != -1) {
                 long price = itemManager.getItemPrice(itemId);
                 totalWealth += price;
             }
         }
-
-        // Lagre risiko i pluginet for overlay-visning
         plugin.setRiskValue(totalWealth);
-
-        // Send chatmelding dersom Risk Display Option er CHAT eller BOTH
-        KPOpponentInfoConfig.RiskDisplayOption riskOption = config.riskDisplayOption();
-        if (riskOption == KPOpponentInfoConfig.RiskDisplayOption.CHAT ||
-                riskOption == KPOpponentInfoConfig.RiskDisplayOption.BOTH)
-        {
-            NumberFormat nf = NumberFormat.getNumberInstance(Locale.US);
-            String formattedWealth = nf.format(totalWealth);
-            String opponentName = opponent.getName();
-            String message = "<col=ffff00>" + opponentName + " is risking about " + formattedWealth + " GP.";
-            chatMessageManager.queue(QueuedMessage.builder()
-                    .type(ChatMessageType.GAMEMESSAGE)
-                    .runeLiteFormattedMessage(message)
-                    .build());
-        }
+        String playerName = Text.removeTags(opponent.getName());
+        NumberFormat nf = NumberFormat.getNumberInstance(Locale.US);
+        String formattedRisk = nf.format(totalWealth);
+        String message = "<col=ffff00>Player " + playerName + " has a potential risk of " + formattedRisk + " GP</col>";
+        chatMessageManager.queue(QueuedMessage.builder()
+                .type(ChatMessageType.GAMEMESSAGE)
+                .runeLiteFormattedMessage(message)
+                .build());
     }
 }
