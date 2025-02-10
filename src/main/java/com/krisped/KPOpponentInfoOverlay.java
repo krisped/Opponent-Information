@@ -26,9 +26,9 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.ComponentConstants;
-import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.ProgressBarComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
+import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.util.Text;
 
 class KPOpponentInfoOverlay extends OverlayPanel {
@@ -36,6 +36,8 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     private static final Color HP_GREEN = new Color(0, 146, 54, 230);
     private static final Color HP_RED = new Color(255, 0, 0, 230);
     private static final Color HP_YELLOW = new Color(255, 255, 0, 230);
+    // Farge for RISK (hex: #FFD700)
+    private static final Color RISK_LABEL_COLOR = Color.decode("#FFD700");
 
     private final Client client;
     private final KPOpponentInfoPlugin plugin;
@@ -119,13 +121,13 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         {
             return null;
         }
-        final FontMetrics fontMetrics = graphics.getFontMetrics();
+        FontMetrics fm = graphics.getFontMetrics(graphics.getFont());
         int panelWidth = Math.max(ComponentConstants.STANDARD_WIDTH,
-                fontMetrics.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER * 2);
+                fm.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER * 2);
         panelComponent.setPreferredSize(new Dimension(panelWidth, 0));
         panelComponent.getChildren().add(TitleComponent.builder().text(opponentName).build());
 
-        // Legg til progress bar for HP
+        // --- HP Progress Bar ---
         if (lastRatio >= 0 && lastHealthScale > 0)
         {
             final ProgressBarComponent progressBarComponent = new ProgressBarComponent();
@@ -179,22 +181,12 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 boolean belowYellow = false;
                 if (lastMaxHealth != null)
                 {
-                    if (config.redThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
-                    {
-                        belowRed = currentHealthAbsolute < config.redThresholdValue();
-                    }
-                    else
-                    {
-                        belowRed = (healthPercentage * 100) < config.redThresholdValue();
-                    }
-                    if (config.yellowThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
-                    {
-                        belowYellow = currentHealthAbsolute < config.yellowThresholdValue();
-                    }
-                    else
-                    {
-                        belowYellow = (healthPercentage * 100) < config.yellowThresholdValue();
-                    }
+                    belowRed = (config.redThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
+                            ? currentHealthAbsolute < config.redThresholdValue()
+                            : (healthPercentage * 100) < config.redThresholdValue();
+                    belowYellow = (config.yellowThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
+                            ? currentHealthAbsolute < config.yellowThresholdValue()
+                            : (healthPercentage * 100) < config.yellowThresholdValue();
                 }
                 else
                 {
@@ -202,13 +194,9 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                     belowYellow = (healthPercentage * 100) < config.yellowThresholdValue();
                 }
                 if (belowRed)
-                {
                     finalColor = HP_RED;
-                }
                 else if (belowYellow)
-                {
                     finalColor = HP_YELLOW;
-                }
             }
 
             if (config.enableBlink())
@@ -216,49 +204,40 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 boolean blinkActive = false;
                 if (lastMaxHealth != null)
                 {
-                    if (config.blinkThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
-                    {
-                        blinkActive = currentHealthAbsolute < config.blinkThresholdValue();
-                    }
-                    else
-                    {
-                        blinkActive = (healthPercentage * 100) < config.blinkThresholdValue();
-                    }
+                    blinkActive = (config.blinkThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
+                            ? currentHealthAbsolute < config.blinkThresholdValue()
+                            : (healthPercentage * 100) < config.blinkThresholdValue();
                 }
                 else
                 {
                     blinkActive = (healthPercentage * 100) < config.blinkThresholdValue();
                 }
-                // I dynamic modus skal vi alltid bruke statusbarens farge uten dimming
-                if (!config.dynamicHealthColor() && blinkActive)
+                if (blinkActive)
                 {
                     long time = System.currentTimeMillis();
                     if ((time / 500) % 2 == 0)
-                    {
                         finalColor = new Color(finalColor.getRed() / 2,
                                 finalColor.getGreen() / 2,
                                 finalColor.getBlue() / 2,
                                 finalColor.getAlpha());
-                    }
                 }
             }
 
             progressBarComponent.setForegroundColor(finalColor);
-
             if ((config.hitpointsDisplayStyle() == HitpointsDisplayStyle.HITPOINTS ||
                     config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH)
                     && lastMaxHealth != null)
             {
-                ProgressBarComponent.LabelDisplayMode mode = config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH ?
-                        ProgressBarComponent.LabelDisplayMode.BOTH :
-                        ProgressBarComponent.LabelDisplayMode.FULL;
+                ProgressBarComponent.LabelDisplayMode mode = config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH
+                        ? ProgressBarComponent.LabelDisplayMode.BOTH
+                        : ProgressBarComponent.LabelDisplayMode.FULL;
                 progressBarComponent.setLabelDisplayMode(mode);
             }
             panelComponent.getChildren().add(progressBarComponent);
             plugin.setLastDynamicColor(finalColor);
         }
 
-        // Vis målrettet combat details (Attack/Wep)
+        // --- Combat Details (Attack/Wep) ---
         if (plugin.getLastOpponent() instanceof Player)
         {
             Player targetPlayer = (Player) plugin.getLastOpponent();
@@ -299,83 +278,68 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             }
         }
 
-        // --- Risk Check med re-check dersom ingen risk er funnet ---
-        if (config.riskDisplayOption() != KPOpponentInfoConfig.RiskDisplayOption.NONE)
+        // --- Risk Check (Overlay) ---
+        // Vis risiko kun dersom riskDisplayOption er OVERLAY eller BOTH.
+        if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
+                config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.BOTH)
         {
-            long riskValue = plugin.getRiskValue();
-            if (riskValue == 0) {
-                riskValue = computeRisk((Player)opponent);
-                if (riskValue > 0) {
-                    plugin.setRiskValue(riskValue);
-                }
+            long riskValue = computeRisk((Player)opponent);
+            Color riskColor = Color.WHITE;
+            if (riskValue > 0 && config.enableColorRisk()) {
+                if (riskValue < config.lowRiskThreshold())
+                    riskColor = Color.WHITE;
+                else if (riskValue < config.highRiskThreshold())
+                    riskColor = config.mediumRiskColor();
+                else if (riskValue < config.insaneRiskThreshold())
+                    riskColor = config.highRiskColor();
+                else
+                    riskColor = config.insaneRiskColor();
             }
-            if (riskValue > 0)
-            {
-                Color riskColor = Color.WHITE;
-                if (config.enableColorRisk()) {
-                    if (riskValue < config.lowRiskThreshold()) {
-                        riskColor = Color.WHITE;
-                    } else if (riskValue < config.highRiskThreshold()) {
-                        riskColor = config.mediumRiskColor();
-                    } else if (riskValue < config.insaneRiskThreshold()) {
-                        riskColor = config.highRiskColor();
-                    } else {
-                        riskColor = config.insaneRiskColor();
-                    }
-                }
-                // Bruk LineComponent for å vise "Risk:" og beløpet i to farger, sentrert
-                panelComponent.getChildren().add(
-                        LineComponent.builder()
-                                .left("Risk:")
-                                .leftColor(Color.WHITE)
-                                .right(formatWealth(riskValue) + " GP")
-                                .rightColor(riskColor)
-                                .build()
-                );
-            }
+            // Fjern " GP" – i overlay skal det kun vises tallet
+            String riskText = riskValue > 0 ? formatWealth(riskValue) : "0";
+            // Bruk en enkel LineComponent med standard oppsett
+            LineComponent riskLine = LineComponent.builder()
+                    .left("RISK:")
+                    .leftColor(RISK_LABEL_COLOR)
+                    .right(riskText)
+                    .rightColor(riskColor)
+                    .build();
+            panelComponent.getChildren().add(riskLine);
         }
         return super.render(graphics);
     }
 
+    // --- determineAttackStyle ---
+    // Hvis ingen våpen finnes (weaponId == -1), returneres "Melee"
     private String determineAttackStyle(Player player)
     {
         int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
         if (weaponId == -1)
-        {
             return "Melee";
-        }
         ItemComposition comp = itemManager.getItemComposition(weaponId);
         if (comp == null)
-        {
-            return "Melee";
-        }
+            return "Unknown";
         String name = comp.getName().toLowerCase();
-        if (name.contains("bow") || name.contains("crossbow") || name.contains("javelin"))
-        {
+        if (name.contains("knife") || name.contains("bow") || name.contains("dart") || name.contains("blowpipe"))
             return "Ranged";
-        }
-        else if (name.contains("staff") || name.contains("wand") || name.contains("scepter") || name.contains("blowpipe"))
-        {
+        else if (name.contains("staff") || name.contains("wand"))
             return "Magic";
-        }
-        else
-        {
+        else if (name.contains("sword") || name.contains("scimitar") ||
+                name.contains("halberd") || name.contains("spear") ||
+                name.contains("whip") || name.contains("dagger") || name.contains("hasta"))
             return "Melee";
-        }
+        else
+            return "Unknown";
     }
 
     private String determineWeaponName(Player player)
     {
         int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
         if (weaponId == -1)
-        {
             return "None";
-        }
         ItemComposition comp = itemManager.getItemComposition(weaponId);
         if (comp == null)
-        {
             return "Unknown";
-        }
         return comp.getName();
     }
 
@@ -392,7 +356,6 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         return false;
     }
 
-    // Beregn total risk basert på spillerens utstyr
     private long computeRisk(Player opponent)
     {
         long totalWealth = 0;
@@ -408,22 +371,21 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         return totalWealth;
     }
 
-    // Formatterer risk-verdien:
-    // < 1000: vis tallet.
-    // < 1 000 000: vis tusen som heltall med "k" (f.eks. 934k)
-    // ≥ 1 000 000: vis med én desimal med komma (f.eks. 1,2m)
     private static String formatWealth(long value)
     {
-        if (value < 1000) {
+        if (value < 1000)
             return Long.toString(value);
-        } else if (value < 1000000) {
+        else if (value < 1000000)
+        {
             long thousands = value / 1000;
-            return thousands + "k";
-        } else {
+            return thousands + "K";
+        }
+        else
+        {
             double millions = value / 1000000.0;
             String formatted = String.format("%.1f", millions);
             formatted = formatted.replace('.', ',');
-            return formatted + "m";
+            return formatted + "M";
         }
     }
 }

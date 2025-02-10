@@ -33,7 +33,9 @@ public class PlayerGearChecker
     @Subscribe
     public void onInteractingChanged(InteractingChanged event)
     {
-        if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.NONE)
+        // Send chat-melding kun dersom riskDisplayOption er CHAT eller BOTH.
+        if (config.riskDisplayOption() != KPOpponentInfoConfig.RiskDisplayOption.CHAT &&
+                config.riskDisplayOption() != KPOpponentInfoConfig.RiskDisplayOption.BOTH)
         {
             return;
         }

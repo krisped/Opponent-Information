@@ -1,11 +1,6 @@
 package com.krisped;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Graphics2D;
-import java.awt.Polygon;
-import java.awt.Shape;
+import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
 import javax.inject.Inject;
@@ -34,8 +29,8 @@ public class KPOpponentHighlight extends Overlay {
         setPosition(OverlayPosition.DYNAMIC);
     }
 
-    // I static modus beregnes fargen ut fra spillerens helse.
-    private Color getCalculatedDynamicColor(Player player) {
+    // Beregn farge basert på spillerens helse – brukes både for static og dynamic modus
+    private Color getCalculatedStaticColor(Player player) {
         int ratio = player.getHealthRatio();
         int scale = player.getHealthScale();
         double healthPerc = (scale > 0) ? (double) ratio / scale : 1.0;
@@ -48,31 +43,34 @@ public class KPOpponentHighlight extends Overlay {
         }
     }
 
-    // I dynamisk modus henter vi statusbarens farge fra pluginet, hvis tilgjengelig.
-    private Color getDynamicColor(Player player) {
-        Color c = plugin.getLastDynamicColor();
-        return (c != null) ? c : getCalculatedDynamicColor(player);
-    }
-
-    // Blink-sjekken brukes kun for static modus; i dynamisk modus ignorerer vi blink.
+    // Sjekk om blink skal være aktivt basert på spillerens helse
     private boolean isBlinkActive(Player player) {
         int ratio = player.getHealthRatio();
         int scale = player.getHealthScale();
         double healthPerc = (scale > 0) ? (double) ratio / scale : 1.0;
-        return (healthPerc * 100 < config.blinkThresholdValue());
+        if (config.blinkThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.PERCENT) {
+            return (healthPerc * 100 < config.blinkThresholdValue());
+        } else {
+            // For HP-enhet bruker vi prosent-sammenligning
+            return (healthPerc * 100 < config.blinkThresholdValue());
+        }
     }
 
-    // Dimmer fargen ved blink – samme som statusbarens logikk.
-    private Color dimColor(Color color) {
-        return new Color(color.getRed() / 2, color.getGreen() / 2, color.getBlue() / 2, color.getAlpha());
+    // Returnerer en dimmet farge (blink-effekt)
+    private Color applyBlink(Color baseColor) {
+        long time = System.currentTimeMillis();
+        if ((time / 500) % 2 == 0) {
+            return new Color(baseColor.getRed() / 2, baseColor.getGreen() / 2, baseColor.getBlue() / 2, baseColor.getAlpha());
+        }
+        return baseColor;
     }
 
     @Override
     public Dimension render(Graphics2D graphics) {
+        // Dersom ingen highlight-modus er aktivert, avslutt
         if (config.outlineHighlightMode() == KPOpponentInfoConfig.HighlightMode.NONE &&
                 config.hullHighlightMode() == KPOpponentInfoConfig.HighlightMode.NONE &&
-                config.tileHighlightMode() == KPOpponentInfoConfig.HighlightMode.NONE)
-        {
+                config.tileHighlightMode() == KPOpponentInfoConfig.HighlightMode.NONE) {
             return null;
         }
 
@@ -81,27 +79,31 @@ public class KPOpponentHighlight extends Overlay {
             return null;
         }
         Player player = (Player) opponent;
-        Color dynamicColor = getDynamicColor(player);
 
-        // 1. Outline Highlight (Priority 1)
+        // --- Outline Highlight ---
         if (config.outlineHighlightMode() != KPOpponentInfoConfig.HighlightMode.NONE) {
-            // Hvis mode er static, bruk blink-innstillingen; i dynamisk mode ignoreres blink
-            Color color = (config.outlineHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC)
-                    ? config.outlineHighlightColor() : dynamicColor;
-            if (config.outlineHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC &&
-                    config.outlineBlink() && isBlinkActive(player)) {
-                color = dimColor(color);
+            Color color;
+            if (config.outlineHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC) {
+                color = config.outlineHighlightColor();
+            } else { // DYNAMIC – bruk beregnet farge, uavhengig av statusbarens blink
+                color = getCalculatedStaticColor(player);
+            }
+            if (config.outlineBlink() && isBlinkActive(player)) {
+                color = applyBlink(color);
             }
             modelOutlineRenderer.drawOutline(player, 1, color, 1);
         }
 
-        // 2. Hull Highlight (Priority 2)
+        // --- Hull Highlight ---
         if (config.hullHighlightMode() != KPOpponentInfoConfig.HighlightMode.NONE) {
-            Color color = (config.hullHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC)
-                    ? config.hullHighlightColor() : dynamicColor;
-            if (config.hullHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC &&
-                    config.hullBlink() && isBlinkActive(player)) {
-                color = dimColor(color);
+            Color color;
+            if (config.hullHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC) {
+                color = config.hullHighlightColor();
+            } else { // DYNAMIC
+                color = getCalculatedStaticColor(player);
+            }
+            if (config.hullBlink() && isBlinkActive(player)) {
+                color = applyBlink(color);
             }
             Shape hull = player.getConvexHull();
             if (hull != null) {
@@ -119,13 +121,16 @@ public class KPOpponentHighlight extends Overlay {
             }
         }
 
-        // 3. Tile Highlight (Priority 3)
+        // --- Tile Highlight ---
         if (config.tileHighlightMode() != KPOpponentInfoConfig.HighlightMode.NONE) {
-            Color color = (config.tileHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC)
-                    ? config.tileHighlightColor() : dynamicColor;
-            if (config.tileHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC &&
-                    config.tileBlink() && isBlinkActive(player)) {
-                color = dimColor(color);
+            Color color;
+            if (config.tileHighlightMode() == KPOpponentInfoConfig.HighlightMode.STATIC) {
+                color = config.tileHighlightColor();
+            } else { // DYNAMIC
+                color = getCalculatedStaticColor(player);
+            }
+            if (config.tileBlink() && isBlinkActive(player)) {
+                color = applyBlink(color);
             }
             LocalPoint lp = player.getLocalLocation();
             if (lp != null) {

@@ -295,7 +295,7 @@ public interface KPOpponentInfoConfig extends Config
             section = riskSettings
     )
     default int mediumRiskThreshold() {
-        return 20000; // For eksempel: risk ≥ lowRiskThreshold og under highRiskThreshold = blå
+        return 20000;
     }
 
     @Alpha
@@ -307,7 +307,7 @@ public interface KPOpponentInfoConfig extends Config
             section = riskSettings
     )
     default Color mediumRiskColor() {
-        return new Color(0, 0, 255, 255); // blå
+        return new Color(0, 0, 255, 255);
     }
 
     @Alpha
@@ -319,7 +319,7 @@ public interface KPOpponentInfoConfig extends Config
             section = riskSettings
     )
     default Color highRiskColor() {
-        return new Color(0, 255, 0, 255); // grønn
+        return new Color(0, 255, 0, 255);
     }
 
     @ConfigItem(
@@ -342,7 +342,7 @@ public interface KPOpponentInfoConfig extends Config
             section = riskSettings
     )
     default Color insaneRiskColor() {
-        return new Color(255, 105, 180, 255); // rosa
+        return new Color(255, 105, 180, 255);
     }
 
     @ConfigItem(
