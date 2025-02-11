@@ -70,7 +70,7 @@ public interface KPOpponentInfoConfig extends Config
     )
     String extendedFeatures = "extendedFeatures";
 
-    // --- Nytt: Checkbox for Attack Style ---
+    // Checkbox for Attack Style
     @ConfigItem(
             keyName = "showAttackStyle",
             name = "Show Attack Style",
@@ -82,7 +82,7 @@ public interface KPOpponentInfoConfig extends Config
         return false;
     }
 
-    // --- Nytt: Dropdown for Weapon Display ---
+    // Dropdown for Weapon Display
     @ConfigItem(
             keyName = "weaponDisplay",
             name = "Weapon Display",
@@ -115,44 +115,11 @@ public interface KPOpponentInfoConfig extends Config
         }
     }
 
-    // Gammel targetCombatDisplay fjernes (eller kommenteres ut)
-    /*
-    @ConfigItem(
-            keyName = "targetCombatDisplay",
-            name = "Target Combat Display",
-            description = "Select how to display target's combat details: None, Attack Style, Wep, or Both.",
-            position = 0,
-            section = extendedFeatures
-    )
-    default TargetCombatDisplay targetCombatDisplay() {
-        return TargetCombatDisplay.NONE;
-    }
-
-    enum TargetCombatDisplay {
-        NONE("None"),
-        ATTACK_STYLE("Attack Style"),
-        WEAPON("Wep"),
-        BOTH("Both");
-
-        private final String display;
-        TargetCombatDisplay(String display) {
-            this.display = display;
-        }
-        public String getDisplay() {
-            return display;
-        }
-        @Override
-        public String toString() {
-            return display;
-        }
-    }
-    */
-
     @ConfigItem(
             keyName = "showSmitedPrayer",
             name = "Show Smited Prayer",
             description = "Toggle to display the total smited prayer points on the overlay.",
-            position = 1,
+            position = 2,
             section = extendedFeatures
     )
     default boolean showSmitedPrayer() {
@@ -542,5 +509,89 @@ public interface KPOpponentInfoConfig extends Config
         public String toString() {
             return display;
         }
+    }
+
+    // Ny kategori: Overlay Priority
+    @ConfigSection(
+            name = "Overlay Priority",
+            description = "Angi prioritet (lavere tall vises først)",
+            position = 9,
+            closedByDefault = true
+    )
+    String overlayPriority = "overlayPriority";
+
+    @ConfigItem(
+            keyName = "healthBarPriority",
+            name = "Health Bar Priority",
+            description = "Prioritet for helsebjelken.",
+            position = 0,
+            section = overlayPriority
+    )
+    default int healthBarPriority() {
+        return 1;
+    }
+
+    @ConfigItem(
+            keyName = "smitedPriority",
+            name = "Smited Priority",
+            description = "Prioritet for smited prayer.",
+            position = 1,
+            section = overlayPriority
+    )
+    default int smitedPriority() {
+        return 2;
+    }
+
+    @ConfigItem(
+            keyName = "attackTypePriority",
+            name = "Attack Type Priority",
+            description = "Prioritet for attack type.",
+            position = 2,
+            section = overlayPriority
+    )
+    default int attackTypePriority() {
+        return 3;
+    }
+
+    @ConfigItem(
+            keyName = "weaponPriority",
+            name = "Weapon Priority",
+            description = "Prioritet for våpeninfo.",
+            position = 3,
+            section = overlayPriority
+    )
+    default int weaponPriority() {
+        return 4;
+    }
+
+    @ConfigItem(
+            keyName = "riskPriority",
+            name = "Risk Priority",
+            description = "Prioritet for risikovisning.",
+            position = 4,
+            section = overlayPriority
+    )
+    default int riskPriority() {
+        return 5;
+    }
+
+    // Debug seksjon
+    @ConfigSection(
+            name = "Debug",
+            description = "Innstillinger for debug-overlay",
+            position = 10,
+            closedByDefault = true
+    )
+    String debugSection = "debugSection";
+
+    @ConfigItem(
+            keyName = "debugOverlay",
+            name = "Debug Overlay",
+            description = "Hvis aktivert, vises overlay med eksempeldata uten timer. Denne vil automatisk deaktiveres ved kamp.",
+            position = 0,
+            section = debugSection
+    )
+    default boolean debugOverlay() {
+        return false;
     }
 }

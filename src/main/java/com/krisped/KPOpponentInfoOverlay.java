@@ -7,7 +7,9 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
-import java.awt.Polygon;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
@@ -18,7 +20,6 @@ import net.runelite.api.ParamID;
 import net.runelite.api.Player;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
-import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.kit.KitType;
 import net.runelite.client.game.NPCManager;
 import net.runelite.client.hiscore.HiscoreManager;
@@ -31,6 +32,7 @@ import net.runelite.client.ui.overlay.components.ComponentConstants;
 import net.runelite.client.ui.overlay.components.ProgressBarComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 import net.runelite.client.ui.overlay.components.LineComponent;
+import net.runelite.client.ui.overlay.components.LayoutableRenderableEntity;
 import net.runelite.client.util.Text;
 
 class KPOpponentInfoOverlay extends OverlayPanel {
@@ -45,7 +47,6 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     private final KPOpponentInfoConfig config;
     private final HiscoreManager hiscoreManager;
     private final NPCManager npcManager;
-
     @Inject
     private ItemManager itemManager;
 
@@ -54,8 +55,27 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     private int lastHealthScale = 0;
     private String opponentName;
 
+    // Intern klasse for overlay-elementer med prioritet (bruker double for finjustering)
+    private static class OverlayItem {
+        private final double priority;
+        private final LayoutableRenderableEntity component;
+
+        OverlayItem(double priority, LayoutableRenderableEntity component) {
+            this.priority = priority;
+            this.component = component;
+        }
+
+        double getPriority() {
+            return priority;
+        }
+
+        LayoutableRenderableEntity getComponent() {
+            return component;
+        }
+    }
+
     @Inject
-    private KPOpponentInfoOverlay(
+    KPOpponentInfoOverlay(
             Client client,
             KPOpponentInfoPlugin plugin,
             KPOpponentInfoConfig config,
@@ -80,6 +100,65 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     @Override
     public Dimension render(Graphics2D graphics)
     {
+        // Debug-modus: vis eksempeldata dersom debugOverlay er aktiv og det IKKE finnes en aktiv motstander.
+        if (config.debugOverlay() && plugin.getLastOpponent() == null)
+        {
+            panelComponent.getChildren().clear();
+            panelComponent.getChildren().add(TitleComponent.builder().text("Debug").build());
+            List<OverlayItem> debugItems = new ArrayList<>();
+
+            // Sample Health Bar
+            ProgressBarComponent debugHealth = new ProgressBarComponent();
+            debugHealth.setMaximum(100);
+            debugHealth.setValue(100);
+            debugHealth.setForegroundColor(HP_GREEN);
+            debugHealth.setBackgroundColor(new Color(0, 0, 0, 150));
+            debugItems.add(new OverlayItem(config.healthBarPriority(), debugHealth));
+
+            // Sample Smited Prayer
+            LineComponent debugSmited = LineComponent.builder()
+                    .left("Smited:")
+                    .right("0")
+                    .leftColor(Color.WHITE)
+                    .rightColor(Color.WHITE)
+                    .build();
+            debugItems.add(new OverlayItem(config.smitedPriority(), debugSmited));
+
+            // Sample Attack Type
+            LineComponent debugAttack = LineComponent.builder()
+                    .left("Attack:")
+                    .right("Melee")
+                    .leftColor(new Color(173, 216, 230))
+                    .rightColor(new Color(173, 216, 230))
+                    .build();
+            debugItems.add(new OverlayItem(config.attackTypePriority(), debugAttack));
+
+            // Sample Weapon – kun "Cur.:" dersom prev ikke finnes.
+            LineComponent debugWeapon = LineComponent.builder()
+                    .left("Cur.:")
+                    .right(trimText("Current weapon", 50))
+                    .leftColor(new Color(173, 216, 230))
+                    .rightColor(new Color(173, 216, 230))
+                    .build();
+            debugItems.add(new OverlayItem(config.weaponPriority(), debugWeapon));
+
+            // Sample Risk
+            LineComponent debugRisk = LineComponent.builder()
+                    .left("Risk:")
+                    .right("0")
+                    .leftColor(RISK_LABEL_COLOR)
+                    .rightColor(Color.WHITE)
+                    .build();
+            debugItems.add(new OverlayItem(config.riskPriority(), debugRisk));
+
+            debugItems.sort(Comparator.comparingDouble(OverlayItem::getPriority));
+            for (OverlayItem item : debugItems) {
+                panelComponent.getChildren().add(item.getComponent());
+            }
+            return super.render(graphics);
+        }
+
+        // Normal rendering
         final Actor opponent = plugin.getLastOpponent();
         if (opponent == null)
         {
@@ -116,16 +195,22 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         }
         if (opponentName == null || hasHpHud(opponent) || !config.showOpponentHealthOverlay())
             return null;
+
         FontMetrics fm = graphics.getFontMetrics(graphics.getFont());
-        int panelWidth = Math.max(ComponentConstants.STANDARD_WIDTH,
-                fm.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER * 2);
+        int opponentWidth = fm.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER * 2;
+        int panelWidth = Math.max(ComponentConstants.STANDARD_WIDTH, opponentWidth);
         panelComponent.setPreferredSize(new Dimension(panelWidth, 0));
+
+        List<OverlayItem> overlayItems = new ArrayList<>();
+        panelComponent.getChildren().clear();
+
+        // Tittel: motstanderens navn
         panelComponent.getChildren().add(TitleComponent.builder().text(opponentName).build());
 
-        // HP Progress Bar
+        // --- Health Bar ---
         if (lastRatio >= 0 && lastHealthScale > 0)
         {
-            final ProgressBarComponent progressBarComponent = new ProgressBarComponent();
+            ProgressBarComponent progressBarComponent = new ProgressBarComponent();
             progressBarComponent.setBackgroundColor(new Color(0, 0, 0, 150));
             final HitpointsDisplayStyle displayStyle = config.hitpointsDisplayStyle();
             double healthPercentage = 0;
@@ -166,12 +251,10 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 progressBarComponent.setValue(floatRatio * 100d);
                 healthPercentage = lastRatio / (double) lastHealthScale;
             }
-
             Color finalColor = HP_GREEN;
             if (config.dynamicHealthColor())
             {
-                boolean belowRed = false;
-                boolean belowYellow = false;
+                boolean belowRed, belowYellow;
                 if (lastMaxHealth != null)
                 {
                     belowRed = (config.redThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
@@ -191,10 +274,9 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 else if (belowYellow)
                     finalColor = HP_YELLOW;
             }
-
             if (config.enableBlink())
             {
-                boolean blinkActive = false;
+                boolean blinkActive;
                 if (lastMaxHealth != null)
                 {
                     blinkActive = (config.blinkThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
@@ -225,79 +307,91 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                         : ProgressBarComponent.LabelDisplayMode.FULL;
                 progressBarComponent.setLabelDisplayMode(mode);
             }
-            panelComponent.getChildren().add(progressBarComponent);
+            overlayItems.add(new OverlayItem(config.healthBarPriority(), progressBarComponent));
             plugin.setLastDynamicColor(finalColor);
         }
 
-        // --- Kampdetaljer ---
-
-        if (plugin.getLastOpponent() instanceof Player)
+        // --- Smited Prayer ---
+        if (config.showSmitedPrayer() && (plugin.getSmitedPrayer() > 0 || plugin.isSmiteActivated()))
         {
-            Player targetPlayer = (Player) plugin.getLastOpponent();
-            // Vis Attack Style dersom aktivert
-            if (config.showAttackStyle())
+            LineComponent smitedComponent = LineComponent.builder()
+                    .left("Smited:")
+                    .right(String.valueOf(plugin.getSmitedPrayer()))
+                    .leftColor(Color.WHITE)
+                    .rightColor(Color.WHITE)
+                    .build();
+            overlayItems.add(new OverlayItem(config.smitedPriority(), smitedComponent));
+        }
+
+        // --- Attack Type ---
+        if (opponent instanceof Player && config.showAttackStyle())
+        {
+            Player targetPlayer = (Player) opponent;
+            String attackStyle = determineAttackStyle(targetPlayer);
+            LineComponent attackComponent = LineComponent.builder()
+                    .left("Attack:")
+                    .right(attackStyle)
+                    .leftColor(new Color(173, 216, 230))
+                    .rightColor(new Color(173, 216, 230))
+                    .build();
+            overlayItems.add(new OverlayItem(config.attackTypePriority(), attackComponent));
+        }
+
+        // --- Weapons ---
+        if (opponent instanceof Player)
+        {
+            Player targetPlayer = (Player) opponent;
+            String currentWeapon = determineWeaponName(targetPlayer);
+            if (plugin.getCurrentWeaponName() == null)
             {
-                String attackStyle = determineAttackStyle(targetPlayer);
-                panelComponent.getChildren().add(
-                        TitleComponent.builder()
-                                .text("Attack: " + attackStyle)
-                                .color(new Color(173, 216, 230))
-                                .build());
+                plugin.setCurrentWeaponName(currentWeapon);
             }
-            // Håndter våpenvisning
+            else if (!plugin.getCurrentWeaponName().equals(currentWeapon))
+            {
+                plugin.setLastWeaponName(plugin.getCurrentWeaponName());
+                plugin.setCurrentWeaponName(currentWeapon);
+            }
             KPOpponentInfoConfig.WeaponDisplayOption weaponOption = config.weaponDisplay();
             if (weaponOption != KPOpponentInfoConfig.WeaponDisplayOption.NONE)
             {
-                String currentWeapon = determineWeaponName(targetPlayer);
-                // Oppdater pluginens våpeninformasjon
-                if (plugin.getCurrentWeaponName() == null)
-                {
-                    plugin.setCurrentWeaponName(currentWeapon);
-                }
-                else if (!plugin.getCurrentWeaponName().equals(currentWeapon))
-                {
-                    plugin.setLastWeaponName(plugin.getCurrentWeaponName());
-                    plugin.setCurrentWeaponName(currentWeapon);
-                }
                 if (weaponOption == KPOpponentInfoConfig.WeaponDisplayOption.CURRENT)
                 {
-                    panelComponent.getChildren().add(
-                            TitleComponent.builder()
-                                    .text("Wep: " + currentWeapon)
-                                    .color(new Color(173, 216, 230))
-                                    .build());
+                    LineComponent currentWeaponComponent = LineComponent.builder()
+                            .left("Cur.:")
+                            .right(trimText(currentWeapon, 50))
+                            .leftColor(new Color(173, 216, 230))
+                            .rightColor(new Color(173, 216, 230))
+                            .build();
+                    overlayItems.add(new OverlayItem(config.weaponPriority(), currentWeaponComponent));
                 }
                 else if (weaponOption == KPOpponentInfoConfig.WeaponDisplayOption.CURRENT_AND_LAST)
                 {
-                    panelComponent.getChildren().add(
-                            TitleComponent.builder()
-                                    .text("Wep: " + currentWeapon)
-                                    .color(new Color(173, 216, 230))
-                                    .build());
+                    // "Cur.:" linje
+                    LineComponent currentWeaponComponent = LineComponent.builder()
+                            .left("Cur.:")
+                            .right(trimText(currentWeapon, 50))
+                            .leftColor(new Color(173, 216, 230))
+                            .rightColor(new Color(173, 216, 230))
+                            .build();
+                    overlayItems.add(new OverlayItem(config.weaponPriority(), currentWeaponComponent));
+
+                    // "Prev.:" linje, dersom tilgjengelig
                     String lastWeapon = plugin.getLastWeaponName();
-                    if (lastWeapon != null)
+                    if (lastWeapon != null && !lastWeapon.isEmpty())
                     {
-                        panelComponent.getChildren().add(
-                                TitleComponent.builder()
-                                        .text("Last: " + lastWeapon)
-                                        .color(new Color(173, 216, 230))
-                                        .build());
+                        LineComponent prevWeaponComponent = LineComponent.builder()
+                                .left("Prev.:")
+                                .right(trimText(lastWeapon, 50))
+                                .leftColor(new Color(173, 216, 230))
+                                .rightColor(new Color(173, 216, 230))
+                                .build();
+                        overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1, prevWeaponComponent));
                     }
                 }
             }
         }
 
-        // Smited Prayer
-        if (config.showSmitedPrayer() && (plugin.getSmitedPrayer() > 0 || plugin.isSmiteActivated()))
-        {
-            panelComponent.getChildren().add(
-                    TitleComponent.builder()
-                            .text("Smited: " + plugin.getSmitedPrayer())
-                            .color(Color.WHITE)
-                            .build());
-        }
-
-        // Risk Check (Overlay)
+        // --- Risk ---
         if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
                 config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.BOTH)
         {
@@ -314,18 +408,39 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                     riskColor = config.insaneRiskColor();
             }
             String riskText = riskValue > 0 ? formatWealth(riskValue) : "0";
-            panelComponent.getChildren().add(
-                    LineComponent.builder()
-                            .left("RISK:")
-                            .leftColor(RISK_LABEL_COLOR)
-                            .right(riskText)
-                            .rightColor(riskColor)
-                            .build());
+            LineComponent riskComponent = LineComponent.builder()
+                    .left("Risk:")
+                    .right(riskText)
+                    .leftColor(RISK_LABEL_COLOR)
+                    .rightColor(riskColor)
+                    .build();
+            overlayItems.add(new OverlayItem(config.riskPriority(), riskComponent));
         }
+
+        overlayItems.sort(Comparator.comparingDouble(OverlayItem::getPriority));
+        for (OverlayItem item : overlayItems)
+        {
+            panelComponent.getChildren().add(item.getComponent());
+        }
+
         return super.render(graphics);
     }
 
-    // determineAttackStyle – oppdatert med nye nøkkelord
+    // Hjelpefunksjon for å trimme tekst til maks lengde (her 50 tegn)
+    private String trimText(String text, int maxLength)
+    {
+        if (text == null)
+        {
+            return "";
+        }
+        if (text.length() > maxLength)
+        {
+            return text.substring(0, maxLength - 3) + "...";
+        }
+        return text;
+    }
+
+    // Bestem angrepsstil basert på våpennavn (gjenbruker tidligere logikk)
     private String determineAttackStyle(Player player)
     {
         int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
@@ -335,16 +450,13 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         if (comp == null)
             return "Unknown";
         String name = comp.getName().toLowerCase();
-        // Ranged-nøkkelord
         if (name.contains("knife") || name.contains("bow") || name.contains("dart") ||
                 name.contains("blowpipe") || name.contains("eclipse") ||
                 name.contains("throwing") || name.contains("thrown") || name.contains("toktz-xil-ul"))
             return "Ranged";
-        // Magic-nøkkelord
         if (name.contains("staff") || name.contains("wand") ||
                 name.contains("crozier") || name.contains("salamander"))
             return "Magic";
-        // Melee-nøkkelord (inkluderer nye)
         if (name.contains("tzhaar") || name.contains("maul") || name.contains("axe") ||
                 name.contains("bulwark") || name.contains("banners") || name.contains("machete") ||
                 name.contains("mjolnir") || name.contains("scythe") || name.contains("sickle") ||
@@ -356,6 +468,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         return "Unknown";
     }
 
+    // Bestem våpennavn
     private String determineWeaponName(Player player)
     {
         int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
