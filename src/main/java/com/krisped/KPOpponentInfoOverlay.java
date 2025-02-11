@@ -62,11 +62,16 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     private int lastHealthScale = 0;
     private String opponentName;
 
-    // Nye sprite-ID-er:
-    private final int currentWeaponSpriteId = 168;    // Brukes for CURRENT våpen
-    private final int previousWeaponSpriteId = 168;     // Brukes for PREVIOUS våpen
+    // Sprite-ID-er:
+    private final int currentWeaponSpriteId = 168;    // For CURRENT våpen
+    private final int previousWeaponSpriteId = 168;     // For PREVIOUS våpen
     private final int smitedSpriteId = 132;             // For Smite
     private final int riskSpriteId = 523;               // For Risk
+    // For Attack-linjen:
+    private final int attackLabelSpriteId = 237;        // Ikon for "Attack:"
+    private final int meleeAttackSpriteId = 129;        // For Melee
+    private final int rangedAttackSpriteId = 128;       // For Ranged
+    private final int magicAttackSpriteId = 127;        // For Magic
 
     // Intern klasse for overlay-elementer med prioritet
     private static class OverlayItem {
@@ -116,59 +121,48 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     }
 
     /**
-     * HorizontalWeaponComponent lager et composite-bilde for våpenlinjen med sprite og tekst.
-     * Spritet erstatter "Cur.:"-teksten.
+     * Kombinerer to bilder horisontalt med et gap.
      */
-    private static class HorizontalWeaponComponent implements LayoutableRenderableEntity {
-        private final BufferedImage icon;
-        private final String weaponText;
-        private final Color textColor;
-        private Dimension preferredSize = new Dimension(0, 0);
-        private Point preferredLocation = new Point(0, 0);
+    private BufferedImage concatImages(BufferedImage img1, BufferedImage img2, int gap) {
+        int width = img1.getWidth() + gap + img2.getWidth();
+        int height = Math.max(img1.getHeight(), img2.getHeight());
+        BufferedImage combined = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = combined.createGraphics();
+        g.drawImage(img1, 0, 0, null);
+        g.drawImage(img2, img1.getWidth() + gap, 0, null);
+        g.dispose();
+        return combined;
+    }
 
-        public HorizontalWeaponComponent(String weaponText, BufferedImage icon, Color textColor) {
-            this.weaponText = weaponText;
-            this.icon = icon;
-            this.textColor = textColor;
+    /**
+     * Lager et composite-bilde for Attack-linjen. Først lages et bilde for "Attack:" med sprite 237,
+     * deretter lages et bilde for angrepsstilen med riktig ikon (129, 128 eller 127) foran stilen.
+     * Til slutt kombineres de to til ett bilde.
+     */
+    private BufferedImage createAttackComposite(Graphics2D graphics, String attackStyle) {
+        Font font = graphics.getFont();
+        // Lag composite for "Attack:"-delen med sprite 237
+        BufferedImage attackLabelSprite = spriteManager.getSprite(attackLabelSpriteId, 0);
+        BufferedImage scaledAttackLabel = (attackLabelSprite != null) ? scaleImage(attackLabelSprite, 16, 16) : null;
+        BufferedImage compositeAttackLabel = createCompositeWeaponImage(scaledAttackLabel, "Attack:", new Color(173,216,230), font);
+
+        // Velg riktig ikon for angrepsstilen
+        int styleSpriteId;
+        if (attackStyle.equalsIgnoreCase("Melee")) {
+            styleSpriteId = meleeAttackSpriteId;
+        } else if (attackStyle.equalsIgnoreCase("Ranged")) {
+            styleSpriteId = rangedAttackSpriteId;
+        } else if (attackStyle.equalsIgnoreCase("Magic")) {
+            styleSpriteId = magicAttackSpriteId;
+        } else {
+            styleSpriteId = meleeAttackSpriteId;
         }
+        BufferedImage styleSprite = spriteManager.getSprite(styleSpriteId, 0);
+        BufferedImage scaledStyleSprite = (styleSprite != null) ? scaleImage(styleSprite, 16, 16) : null;
+        BufferedImage compositeStyle = createCompositeWeaponImage(scaledStyleSprite, attackStyle, new Color(173,216,230), font);
 
-        public Dimension render(Graphics2D graphics) {
-            FontMetrics fm = graphics.getFontMetrics();
-            int iconWidth = (icon != null) ? icon.getWidth() : 0;
-            int gap = (icon != null) ? 5 : 0;
-            int textWidth = fm.stringWidth(weaponText);
-            int height = Math.max(fm.getHeight(), (icon != null) ? icon.getHeight() : 0);
-
-            if (icon != null) {
-                graphics.drawImage(icon, 0, 0, null);
-            }
-            graphics.setColor(textColor);
-            graphics.drawString(weaponText, iconWidth + gap, fm.getAscent());
-
-            int totalWidth = iconWidth + gap + textWidth;
-            preferredSize = new Dimension(totalWidth, height);
-            return preferredSize;
-        }
-
-        public void setPreferredSize(Dimension d) {
-            this.preferredSize = d;
-        }
-
-        public Dimension getPreferredSize() {
-            return preferredSize;
-        }
-
-        public void setPreferredLocation(Point p) {
-            this.preferredLocation = p;
-        }
-
-        public Point getPreferredLocation() {
-            return preferredLocation;
-        }
-
-        public Rectangle getBounds() {
-            return new Rectangle(preferredLocation, preferredSize);
-        }
+        // Kombiner de to composite bildene med et gap på 5 piksler
+        return concatImages(compositeAttackLabel, compositeStyle, 5);
     }
 
     @Inject
@@ -209,7 +203,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             debugHealth.setBackgroundColor(new Color(0, 0, 0, 150));
             overlayItems.add(new OverlayItem(config.healthBarPriority(), debugHealth));
 
-            // Smited (DEBUG) – bruk sprite 132
+            // Smited (DEBUG)
             BufferedImage debugSmitedSprite = spriteManager.getSprite(smitedSpriteId, 0);
             BufferedImage scaledDebugSmited = (debugSmitedSprite != null) ? scaleImage(debugSmitedSprite, 16, 16) : null;
             String debugSmitedText = "Smited: 0";
@@ -218,20 +212,14 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             debugSmitedComponent.setPreferredSize(new Dimension(compositeDebugSmited.getWidth(), compositeDebugSmited.getHeight()));
             overlayItems.add(new OverlayItem(config.smitedPriority(), debugSmitedComponent));
 
-            // Attack (DEBUG) – bruk sprite basert på attack type
+            // Attack (DEBUG) – lag composite for Attack-linjen
             String debugAttackStyle = "Melee"; // for debug
-            int debugAttackSpriteId = debugAttackStyle.equalsIgnoreCase("Melee") ? 129 :
-                    debugAttackStyle.equalsIgnoreCase("Ranged") ? 128 :
-                            debugAttackStyle.equalsIgnoreCase("Magic") ? 127 : 129;
-            BufferedImage debugAttackSprite = spriteManager.getSprite(debugAttackSpriteId, 0);
-            BufferedImage scaledDebugAttackSprite = (debugAttackSprite != null) ? scaleImage(debugAttackSprite, 16, 16) : null;
-            String debugAttackText = "Attack: " + debugAttackStyle;
-            BufferedImage compositeDebugAttack = createCompositeWeaponImage(scaledDebugAttackSprite, debugAttackText, new Color(173,216,230), graphics.getFont());
+            BufferedImage compositeDebugAttack = createAttackComposite(graphics, debugAttackStyle);
             ImageComponent debugAttackComponent = new ImageComponent(compositeDebugAttack);
             debugAttackComponent.setPreferredSize(new Dimension(compositeDebugAttack.getWidth(), compositeDebugAttack.getHeight()));
             overlayItems.add(new OverlayItem(config.attackTypePriority(), debugAttackComponent));
 
-            // CURRENT weapon (DEBUG) – bruk sprite 168 med etikett "1:"
+            // CURRENT weapon (DEBUG)
             BufferedImage debugWeaponSprite = spriteManager.getSprite(currentWeaponSpriteId, 0);
             BufferedImage scaledDebugWeapon = (debugWeaponSprite != null) ? scaleImage(debugWeaponSprite, 16, 16) : null;
             String debugWeaponText = "1: " + trimText("Current weapon", 50);
@@ -240,14 +228,15 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             debugWeaponComponent.setPreferredSize(new Dimension(compositeDebugWeapon.getWidth(), compositeDebugWeapon.getHeight()));
             overlayItems.add(new OverlayItem(config.weaponPriority(), debugWeaponComponent));
 
-            // PREVIOUS weapon (DEBUG) – bruk sprite 168 med etikett "2:" (valgfritt)
+            // PREVIOUS weapon (DEBUG)
             String debugPrevText = "2: " + trimText("Previous weapon", 50);
+            // Her bruker vi samme sprite som CURRENT (ID 168)
             BufferedImage compositeDebugPrevWeapon = createCompositeWeaponImage(scaledDebugWeapon, debugPrevText, new Color(173,216,230), graphics.getFont());
             ImageComponent debugPrevComponent = new ImageComponent(compositeDebugPrevWeapon);
             debugPrevComponent.setPreferredSize(new Dimension(compositeDebugPrevWeapon.getWidth(), compositeDebugPrevWeapon.getHeight()));
             overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1, debugPrevComponent));
 
-            // Risk (DEBUG) – bruk sprite 523
+            // Risk (DEBUG)
             BufferedImage debugRiskSprite = spriteManager.getSprite(riskSpriteId, 0);
             BufferedImage scaledDebugRisk = (debugRiskSprite != null) ? scaleImage(debugRiskSprite, 16, 16) : null;
             String debugRiskText = "Risk: 0";
@@ -383,7 +372,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             plugin.setLastDynamicColor(finalColor);
         }
 
-        // Smited Prayer (NORMAL) – bruk sprite 132
+        // Smited Prayer (NORMAL)
         if (config.showSmitedPrayer() && (plugin.getSmitedPrayer() > 0 || plugin.isSmiteActivated())) {
             BufferedImage smitedSprite = spriteManager.getSprite(smitedSpriteId, 0);
             BufferedImage scaledSmitedSprite = (smitedSprite != null) ? scaleImage(smitedSprite, 16, 16) : null;
@@ -394,24 +383,11 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             overlayItems.add(new OverlayItem(config.smitedPriority(), smitedComponent));
         }
 
-        // Attack Type (NORMAL) – vis composite bilde med sprite basert på attack type
+        // Attack Type (NORMAL)
         if (opponent instanceof Player && config.showAttackStyle()) {
             Player targetPlayer = (Player) opponent;
             String attackStyle = determineAttackStyle(targetPlayer);
-            int attackSpriteId;
-            if (attackStyle.equalsIgnoreCase("Melee")) {
-                attackSpriteId = 129;
-            } else if (attackStyle.equalsIgnoreCase("Ranged")) {
-                attackSpriteId = 128;
-            } else if (attackStyle.equalsIgnoreCase("Magic")) {
-                attackSpriteId = 127;
-            } else {
-                attackSpriteId = 129; // standard
-            }
-            BufferedImage attackSprite = spriteManager.getSprite(attackSpriteId, 0);
-            BufferedImage scaledAttackSprite = (attackSprite != null) ? scaleImage(attackSprite, 16, 16) : null;
-            String attackText = "Attack: " + attackStyle;
-            BufferedImage compositeAttack = createCompositeWeaponImage(scaledAttackSprite, attackText, new Color(173,216,230), graphics.getFont());
+            BufferedImage compositeAttack = createAttackComposite(graphics, attackStyle);
             ImageComponent attackComponent = new ImageComponent(compositeAttack);
             attackComponent.setPreferredSize(new Dimension(compositeAttack.getWidth(), compositeAttack.getHeight()));
             overlayItems.add(new OverlayItem(config.attackTypePriority(), attackComponent));
@@ -454,7 +430,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             }
         }
 
-        // Risk (NORMAL) – bruk sprite 523
+        // Risk (NORMAL)
         if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
                 config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.BOTH) {
             long riskValue = computeRisk((Player) opponent);
