@@ -96,7 +96,7 @@ public class KPOpponentInfoPlugin extends Plugin {
         return lastDynamicColor;
     }
 
-    // Smite-telling: oppdateres KUN dersom smite er aktiv ved treff
+    // Smite-telling: oppdateres kun dersom smite er aktiv ved treff
     private int smitedPrayer = 0;
     public int getSmitedPrayer() {
         return smitedPrayer;
@@ -109,6 +109,32 @@ public class KPOpponentInfoPlugin extends Plugin {
 
     // For å unngå dobbelbehandling av samme hitsplat
     private Hitsplat lastHitsplat;
+
+    // --- Nye felt for våpenvisning ---
+    private String currentWeaponName;
+    private String lastWeaponName;
+
+    public String getCurrentWeaponName() {
+        return currentWeaponName;
+    }
+    public void setCurrentWeaponName(String weapon) {
+        this.currentWeaponName = weapon;
+    }
+    public String getLastWeaponName() {
+        return lastWeaponName;
+    }
+    public void setLastWeaponName(String weapon) {
+        this.lastWeaponName = weapon;
+    }
+
+    // --- Nytt felt for å unngå gjentatt risikomelding ---
+    private boolean riskMessageSent = false;
+    public boolean isRiskMessageSent() {
+        return riskMessageSent;
+    }
+    public void setRiskMessageSent(boolean riskMessageSent) {
+        this.riskMessageSent = riskMessageSent;
+    }
 
     @Provides
     KPOpponentInfoConfig provideConfig(ConfigManager configManager) {
@@ -135,6 +161,9 @@ public class KPOpponentInfoPlugin extends Plugin {
         lastTime = null;
         smiteActivated = false;
         smitedPrayer = 0;
+        currentWeaponName = null;
+        lastWeaponName = null;
+        riskMessageSent = false;
     }
 
     @Subscribe
@@ -150,15 +179,18 @@ public class KPOpponentInfoPlugin extends Plugin {
             return;
         Actor opponent = event.getTarget();
         if (opponent == null) {
-            // Hvis motstanderen slippes, settes timer slik at overlayet forsvinner etter konfigurasjonsvarigheten.
+            // Motstanderen er ikke lenger i interaksjon; oppdater tiden.
             lastTime = Instant.now();
             return;
         }
-        // Ved bytte av motstander nullstilles smite-tellingen og flagget, og timeren settes på nytt.
+        // Ved bytte av motstander, nullstill smite-, våpen- og risikomeldingsdata.
         if (lastOpponent != opponent) {
             smitedPrayer = 0;
             smiteActivated = false;
             lastTime = Instant.now();
+            currentWeaponName = null;
+            lastWeaponName = null;
+            riskMessageSent = false;
         }
         lastOpponent = opponent;
     }
@@ -185,15 +217,15 @@ public class KPOpponentInfoPlugin extends Plugin {
 
     @Subscribe
     public void onGameTick(GameTick gameTick) {
-        // Forny timeren mens spilleren er i interaksjon (aktiv kamp)
+        // Oppdater tid mens spilleren er i interaksjon (aktiv kamp)
         if (client.getLocalPlayer() != null && client.getLocalPlayer().getInteracting() != null) {
             lastTime = Instant.now();
         }
-        // Hvis spilleren har smite aktiv, sett flagget slik at smite-overlay vises
+        // Hvis smite er aktiv, sett flagget slik at smite-overlay vises.
         if (client.isPrayerActive(net.runelite.api.Prayer.SMITE)) {
             smiteActivated = true;
         }
-        // Fjern overlay (og nullstill smite-telling og flagg) dersom det har gått lengre enn overlayDisplayDuration siden siste oppdatering.
+        // Fjern overlay og nullstill smite-telling dersom det har gått for lang tid.
         if (lastOpponent != null && lastTime != null) {
             if (Duration.between(lastTime, Instant.now()).toSeconds() > config.overlayDisplayDuration()) {
                 lastOpponent = null;

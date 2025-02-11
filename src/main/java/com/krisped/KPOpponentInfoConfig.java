@@ -70,6 +70,53 @@ public interface KPOpponentInfoConfig extends Config
     )
     String extendedFeatures = "extendedFeatures";
 
+    // --- Nytt: Checkbox for Attack Style ---
+    @ConfigItem(
+            keyName = "showAttackStyle",
+            name = "Show Attack Style",
+            description = "Viser angrepsstil for motstanderen.",
+            position = 0,
+            section = extendedFeatures
+    )
+    default boolean showAttackStyle() {
+        return false;
+    }
+
+    // --- Nytt: Dropdown for Weapon Display ---
+    @ConfigItem(
+            keyName = "weaponDisplay",
+            name = "Weapon Display",
+            description = "Velg våpenvisning: None, Current, Current & Last",
+            position = 1,
+            section = extendedFeatures
+    )
+    default WeaponDisplayOption weaponDisplay() {
+        return WeaponDisplayOption.NONE;
+    }
+
+    enum WeaponDisplayOption {
+        NONE("None"),
+        CURRENT("Current"),
+        CURRENT_AND_LAST("Current & Last");
+
+        private final String display;
+
+        WeaponDisplayOption(String display) {
+            this.display = display;
+        }
+
+        public String getDisplay() {
+            return display;
+        }
+
+        @Override
+        public String toString() {
+            return display;
+        }
+    }
+
+    // Gammel targetCombatDisplay fjernes (eller kommenteres ut)
+    /*
     @ConfigItem(
             keyName = "targetCombatDisplay",
             name = "Target Combat Display",
@@ -99,6 +146,7 @@ public interface KPOpponentInfoConfig extends Config
             return display;
         }
     }
+    */
 
     @ConfigItem(
             keyName = "showSmitedPrayer",
@@ -234,7 +282,6 @@ public interface KPOpponentInfoConfig extends Config
     )
     String riskSettings = "riskSettings";
 
-    // 1. Risk Display Option
     @ConfigItem(
             keyName = "riskDisplayOption",
             name = "Risk Display Option",
@@ -265,7 +312,6 @@ public interface KPOpponentInfoConfig extends Config
         }
     }
 
-    // 2. Enable Color Risk
     @ConfigItem(
             keyName = "enableColorRisk",
             name = "Enable Color Risk",
@@ -277,7 +323,6 @@ public interface KPOpponentInfoConfig extends Config
         return false;
     }
 
-    // 3. Low Risk Threshold
     @ConfigItem(
             keyName = "lowRiskThreshold",
             name = "Low Risk Threshold",
@@ -289,7 +334,6 @@ public interface KPOpponentInfoConfig extends Config
         return 20000;
     }
 
-    // 4. Low Risk Color (default: #FF66B2FF)
     @Alpha
     @ConfigItem(
             keyName = "lowRiskColor",
@@ -302,7 +346,6 @@ public interface KPOpponentInfoConfig extends Config
         return new Color(0xFF66B2FF, true);
     }
 
-    // 5. Medium Risk Threshold
     @ConfigItem(
             keyName = "mediumRiskThreshold",
             name = "Medium Risk Threshold",
@@ -314,7 +357,6 @@ public interface KPOpponentInfoConfig extends Config
         return 100000;
     }
 
-    // 6. Medium Risk Color (default: #FF99FF99)
     @Alpha
     @ConfigItem(
             keyName = "mediumRiskColor",
@@ -327,7 +369,6 @@ public interface KPOpponentInfoConfig extends Config
         return new Color(0xFF99FF99, true);
     }
 
-    // 7. High Risk Threshold
     @ConfigItem(
             keyName = "highRiskThreshold",
             name = "High Risk Threshold",
@@ -339,7 +380,6 @@ public interface KPOpponentInfoConfig extends Config
         return 1000000;
     }
 
-    // 8. High Risk Color (default: #FFFF9600)
     @Alpha
     @ConfigItem(
             keyName = "highRiskColor",
@@ -352,7 +392,6 @@ public interface KPOpponentInfoConfig extends Config
         return new Color(0xFFFF9600, true);
     }
 
-    // 9. Insane Risk Threshold
     @ConfigItem(
             keyName = "insaneRiskThreshold",
             name = "Insane Risk Threshold",
@@ -364,7 +403,6 @@ public interface KPOpponentInfoConfig extends Config
         return 10000000;
     }
 
-    // 10. Insane Risk Color (default: #FFFF62B2)
     @Alpha
     @ConfigItem(
             keyName = "insaneRiskColor",
@@ -386,7 +424,6 @@ public interface KPOpponentInfoConfig extends Config
     )
     String highlightSection = "highlightSection";
 
-    // Priority 1: Outline Highlight
     @ConfigItem(
             keyName = "outlineHighlightMode",
             name = "Outline Highlight",
@@ -421,7 +458,6 @@ public interface KPOpponentInfoConfig extends Config
         return Color.RED;
     }
 
-    // Priority 2: Hull Highlight
     @ConfigItem(
             keyName = "hullHighlightMode",
             name = "Hull Highlight",
@@ -456,7 +492,6 @@ public interface KPOpponentInfoConfig extends Config
         return Color.RED;
     }
 
-    // Priority 3: Tile Highlight
     @ConfigItem(
             keyName = "tileHighlightMode",
             name = "Tile Highlight",

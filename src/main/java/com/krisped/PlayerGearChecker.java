@@ -11,8 +11,8 @@ import net.runelite.client.eventbus.Subscribe;
 import javax.inject.Inject;
 import java.text.NumberFormat;
 import java.util.Locale;
-import java.awt.Color;
 import net.runelite.client.util.Text;
+import java.awt.Color;
 
 public class PlayerGearChecker
 {
@@ -43,6 +43,12 @@ public class PlayerGearChecker
         {
             return;
         }
+
+        // Sjekk om risikomelding allerede er sendt for denne motstanderen
+        if (plugin.isRiskMessageSent()) {
+            return;
+        }
+
         long now = System.currentTimeMillis();
         int cooldown = config.overlayDisplayDuration() * 1000;
         if (now - lastGearMessageTime < cooldown)
@@ -68,5 +74,8 @@ public class PlayerGearChecker
                 .type(ChatMessageType.GAMEMESSAGE)
                 .runeLiteFormattedMessage(message)
                 .build());
+
+        // Sett flagget slik at meldingen ikke vises flere ganger for samme motstander
+        plugin.setRiskMessageSent(true);
     }
 }

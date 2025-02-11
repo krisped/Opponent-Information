@@ -229,48 +229,65 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             plugin.setLastDynamicColor(finalColor);
         }
 
-        // Combat Details (Attack/Wep)
+        // --- Kampdetaljer ---
+
         if (plugin.getLastOpponent() instanceof Player)
         {
             Player targetPlayer = (Player) plugin.getLastOpponent();
-            KPOpponentInfoConfig.TargetCombatDisplay tcDisplay = config.targetCombatDisplay();
-            if (tcDisplay != KPOpponentInfoConfig.TargetCombatDisplay.NONE)
+            // Vis Attack Style dersom aktivert
+            if (config.showAttackStyle())
             {
                 String attackStyle = determineAttackStyle(targetPlayer);
-                String weaponName = determineWeaponName(targetPlayer);
-                if (tcDisplay == KPOpponentInfoConfig.TargetCombatDisplay.ATTACK_STYLE)
+                panelComponent.getChildren().add(
+                        TitleComponent.builder()
+                                .text("Attack: " + attackStyle)
+                                .color(new Color(173, 216, 230))
+                                .build());
+            }
+            // Håndter våpenvisning
+            KPOpponentInfoConfig.WeaponDisplayOption weaponOption = config.weaponDisplay();
+            if (weaponOption != KPOpponentInfoConfig.WeaponDisplayOption.NONE)
+            {
+                String currentWeapon = determineWeaponName(targetPlayer);
+                // Oppdater pluginens våpeninformasjon
+                if (plugin.getCurrentWeaponName() == null)
+                {
+                    plugin.setCurrentWeaponName(currentWeapon);
+                }
+                else if (!plugin.getCurrentWeaponName().equals(currentWeapon))
+                {
+                    plugin.setLastWeaponName(plugin.getCurrentWeaponName());
+                    plugin.setCurrentWeaponName(currentWeapon);
+                }
+                if (weaponOption == KPOpponentInfoConfig.WeaponDisplayOption.CURRENT)
                 {
                     panelComponent.getChildren().add(
                             TitleComponent.builder()
-                                    .text("Attack: " + attackStyle)
+                                    .text("Wep: " + currentWeapon)
                                     .color(new Color(173, 216, 230))
                                     .build());
                 }
-                else if (tcDisplay == KPOpponentInfoConfig.TargetCombatDisplay.WEAPON)
+                else if (weaponOption == KPOpponentInfoConfig.WeaponDisplayOption.CURRENT_AND_LAST)
                 {
                     panelComponent.getChildren().add(
                             TitleComponent.builder()
-                                    .text("Wep: " + weaponName)
+                                    .text("Wep: " + currentWeapon)
                                     .color(new Color(173, 216, 230))
                                     .build());
-                }
-                else if (tcDisplay == KPOpponentInfoConfig.TargetCombatDisplay.BOTH)
-                {
-                    panelComponent.getChildren().add(
-                            TitleComponent.builder()
-                                    .text("Attack: " + attackStyle)
-                                    .color(new Color(173, 216, 230))
-                                    .build());
-                    panelComponent.getChildren().add(
-                            TitleComponent.builder()
-                                    .text("Wep: " + weaponName)
-                                    .color(new Color(173, 216, 230))
-                                    .build());
+                    String lastWeapon = plugin.getLastWeaponName();
+                    if (lastWeapon != null)
+                    {
+                        panelComponent.getChildren().add(
+                                TitleComponent.builder()
+                                        .text("Last: " + lastWeapon)
+                                        .color(new Color(173, 216, 230))
+                                        .build());
+                    }
                 }
             }
         }
 
-        // Smited Prayer – vis dersom config er aktivert og enten smitedPrayer > 0 eller smite har vært aktiv.
+        // Smited Prayer
         if (config.showSmitedPrayer() && (plugin.getSmitedPrayer() > 0 || plugin.isSmiteActivated()))
         {
             panelComponent.getChildren().add(
