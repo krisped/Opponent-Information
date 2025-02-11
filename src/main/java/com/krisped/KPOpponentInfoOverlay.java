@@ -334,7 +334,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 name.contains("cutlass") || name.contains("hammer") || name.contains("claws") ||
                 name.contains("sword") || name.contains("scimitar") || name.contains("halberd") ||
                 name.contains("spear") || name.contains("whip") || name.contains("dagger") ||
-                name.contains("hasta") || name.contains("abyssal"))
+                name.contains("hasta") || name.contains("blade") || name.contains("abyssal"))
             return "Melee";
         return "Unknown";
     }
