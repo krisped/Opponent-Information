@@ -100,6 +100,17 @@ public interface KPOpponentInfoConfig extends Config
         }
     }
 
+    @ConfigItem(
+            keyName = "showSmitedPrayer",
+            name = "Show Smited Prayer",
+            description = "Toggle to display the total smited prayer points on the overlay.",
+            position = 1,
+            section = extendedFeatures
+    )
+    default boolean showSmitedPrayer() {
+        return false;
+    }
+
     // Dynamic Bar Settings Section
     @ConfigSection(
             name = "Dynamic Bar Settings",
@@ -223,6 +234,7 @@ public interface KPOpponentInfoConfig extends Config
     )
     String riskSettings = "riskSettings";
 
+    // 1. Risk Display Option
     @ConfigItem(
             keyName = "riskDisplayOption",
             name = "Risk Display Option",
@@ -253,107 +265,116 @@ public interface KPOpponentInfoConfig extends Config
         }
     }
 
+    // 2. Enable Color Risk
+    @ConfigItem(
+            keyName = "enableColorRisk",
+            name = "Enable Color Risk",
+            description = "If enabled, risk value is shown in a color based on thresholds; otherwise, it is always white.",
+            position = 1,
+            section = riskSettings
+    )
+    default boolean enableColorRisk() {
+        return false;
+    }
+
+    // 3. Low Risk Threshold
     @ConfigItem(
             keyName = "lowRiskThreshold",
             name = "Low Risk Threshold",
             description = "Risk threshold for low value items.",
-            position = 1,
+            position = 2,
             section = riskSettings
     )
     default int lowRiskThreshold() {
         return 20000;
     }
 
+    // 4. Low Risk Color (default: #FF66B2FF)
     @Alpha
     @ConfigItem(
             keyName = "lowRiskColor",
             name = "Low Risk Color",
-            description = "Color for risk below the low threshold (default white).",
-            position = 2,
+            description = "Color for risk below the low threshold (default #FF66B2FF).",
+            position = 3,
             section = riskSettings
     )
     default Color lowRiskColor() {
-        return Color.WHITE;
+        return new Color(0xFF66B2FF, true);
     }
 
+    // 5. Medium Risk Threshold
+    @ConfigItem(
+            keyName = "mediumRiskThreshold",
+            name = "Medium Risk Threshold",
+            description = "Risk threshold for medium value items.",
+            position = 4,
+            section = riskSettings
+    )
+    default int mediumRiskThreshold() {
+        return 100000;
+    }
+
+    // 6. Medium Risk Color (default: #FF99FF99)
+    @Alpha
+    @ConfigItem(
+            keyName = "mediumRiskColor",
+            name = "Medium Risk Color",
+            description = "Color for risk between low and high thresholds (default #FF99FF99).",
+            position = 5,
+            section = riskSettings
+    )
+    default Color mediumRiskColor() {
+        return new Color(0xFF99FF99, true);
+    }
+
+    // 7. High Risk Threshold
     @ConfigItem(
             keyName = "highRiskThreshold",
             name = "High Risk Threshold",
             description = "Risk threshold for high value items (risk over this becomes green).",
-            position = 3,
+            position = 6,
             section = riskSettings
     )
     default int highRiskThreshold() {
         return 1000000;
     }
 
-    @ConfigItem(
-            keyName = "mediumRiskThreshold",
-            name = "Medium Risk Threshold",
-            description = "Risk threshold for medium value items (risk over low but under high becomes blue).",
-            position = 5,
-            section = riskSettings
-    )
-    default int mediumRiskThreshold() {
-        return 20000;
-    }
-
-    @Alpha
-    @ConfigItem(
-            keyName = "mediumRiskColor",
-            name = "Medium Risk Color",
-            description = "Color for risk between low and high thresholds (blue).",
-            position = 4,
-            section = riskSettings
-    )
-    default Color mediumRiskColor() {
-        return new Color(0, 0, 255, 255);
-    }
-
+    // 8. High Risk Color (default: #FFFF9600)
     @Alpha
     @ConfigItem(
             keyName = "highRiskColor",
             name = "High Risk Color",
-            description = "Color for risk over high threshold and under insane threshold (green).",
-            position = 6,
+            description = "Color for risk over high threshold and under insane threshold (default #FFFF9600).",
+            position = 7,
             section = riskSettings
     )
     default Color highRiskColor() {
-        return new Color(0, 255, 0, 255);
+        return new Color(0xFFFF9600, true);
     }
 
+    // 9. Insane Risk Threshold
     @ConfigItem(
             keyName = "insaneRiskThreshold",
             name = "Insane Risk Threshold",
             description = "Risk threshold for insane value items (risk over this becomes pink).",
-            position = 7,
+            position = 8,
             section = riskSettings
     )
     default int insaneRiskThreshold() {
         return 10000000;
     }
 
+    // 10. Insane Risk Color (default: #FFFF62B2)
     @Alpha
     @ConfigItem(
             keyName = "insaneRiskColor",
             name = "Insane Risk Color",
-            description = "Color for risk over insane threshold (pink).",
-            position = 8,
-            section = riskSettings
-    )
-    default Color insaneRiskColor() {
-        return new Color(255, 105, 180, 255);
-    }
-
-    @ConfigItem(
-            keyName = "enableColorRisk",
-            name = "Enable Color Risk",
-            description = "If enabled, risk value is shown in a color based on thresholds; otherwise, it is always white.",
+            description = "Color for risk over insane threshold (default #FFFF62B2).",
             position = 9,
             section = riskSettings
     )
-    default boolean enableColorRisk() {
-        return false;
+    default Color insaneRiskColor() {
+        return new Color(0xFFFF66B2, true);
     }
 
     // Highlight Section

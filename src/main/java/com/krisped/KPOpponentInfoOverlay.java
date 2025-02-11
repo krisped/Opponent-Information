@@ -7,6 +7,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.Polygon;
 import javax.inject.Inject;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
@@ -17,6 +18,7 @@ import net.runelite.api.ParamID;
 import net.runelite.api.Player;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.kit.KitType;
 import net.runelite.client.game.NPCManager;
 import net.runelite.client.hiscore.HiscoreManager;
@@ -36,7 +38,6 @@ class KPOpponentInfoOverlay extends OverlayPanel {
     private static final Color HP_GREEN = new Color(0, 146, 54, 230);
     private static final Color HP_RED = new Color(255, 0, 0, 230);
     private static final Color HP_YELLOW = new Color(255, 255, 0, 230);
-    // Farge for RISK (hex: #FFD700)
     private static final Color RISK_LABEL_COLOR = Color.decode("#FFD700");
 
     private final Client client;
@@ -98,9 +99,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 {
                     String longName = composition.getStringValue(ParamID.NPC_HP_NAME);
                     if (!Strings.isNullOrEmpty(longName))
-                    {
                         opponentName = longName;
-                    }
                 }
                 lastMaxHealth = npcManager.getHealth(((NPC) opponent).getId());
             }
@@ -111,23 +110,19 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 {
                     final int hp = hiscoreResult.getSkill(HiscoreSkill.HITPOINTS).getLevel();
                     if (hp > 0)
-                    {
                         lastMaxHealth = hp;
-                    }
                 }
             }
         }
         if (opponentName == null || hasHpHud(opponent) || !config.showOpponentHealthOverlay())
-        {
             return null;
-        }
         FontMetrics fm = graphics.getFontMetrics(graphics.getFont());
         int panelWidth = Math.max(ComponentConstants.STANDARD_WIDTH,
                 fm.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER * 2);
         panelComponent.setPreferredSize(new Dimension(panelWidth, 0));
         panelComponent.getChildren().add(TitleComponent.builder().text(opponentName).build());
 
-        // --- HP Progress Bar ---
+        // HP Progress Bar
         if (lastRatio >= 0 && lastHealthScale > 0)
         {
             final ProgressBarComponent progressBarComponent = new ProgressBarComponent();
@@ -152,9 +147,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                         }
                         maxHealth = (lastMaxHealth * lastRatio - 1) / (lastHealthScale - 1);
                         if (maxHealth > lastMaxHealth)
-                        {
                             maxHealth = lastMaxHealth;
-                        }
                     }
                     else
                     {
@@ -222,7 +215,6 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                                 finalColor.getAlpha());
                 }
             }
-
             progressBarComponent.setForegroundColor(finalColor);
             if ((config.hitpointsDisplayStyle() == HitpointsDisplayStyle.HITPOINTS ||
                     config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH)
@@ -237,7 +229,7 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             plugin.setLastDynamicColor(finalColor);
         }
 
-        // --- Combat Details (Attack/Wep) ---
+        // Combat Details (Attack/Wep)
         if (plugin.getLastOpponent() instanceof Player)
         {
             Player targetPlayer = (Player) plugin.getLastOpponent();
@@ -278,12 +270,21 @@ class KPOpponentInfoOverlay extends OverlayPanel {
             }
         }
 
-        // --- Risk Check (Overlay) ---
-        // Vis risiko kun dersom riskDisplayOption er OVERLAY eller BOTH.
+        // Smited Prayer – vis dersom config er aktivert og enten smitedPrayer > 0 eller smite har vært aktiv.
+        if (config.showSmitedPrayer() && (plugin.getSmitedPrayer() > 0 || plugin.isSmiteActivated()))
+        {
+            panelComponent.getChildren().add(
+                    TitleComponent.builder()
+                            .text("Smited: " + plugin.getSmitedPrayer())
+                            .color(Color.WHITE)
+                            .build());
+        }
+
+        // Risk Check (Overlay)
         if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
                 config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.BOTH)
         {
-            long riskValue = computeRisk((Player)opponent);
+            long riskValue = computeRisk((Player) opponent);
             Color riskColor = Color.WHITE;
             if (riskValue > 0 && config.enableColorRisk()) {
                 if (riskValue < config.lowRiskThreshold())
@@ -295,22 +296,19 @@ class KPOpponentInfoOverlay extends OverlayPanel {
                 else
                     riskColor = config.insaneRiskColor();
             }
-            // Fjern " GP" – i overlay skal det kun vises tallet
             String riskText = riskValue > 0 ? formatWealth(riskValue) : "0";
-            // Bruk en enkel LineComponent med standard oppsett
-            LineComponent riskLine = LineComponent.builder()
-                    .left("RISK:")
-                    .leftColor(RISK_LABEL_COLOR)
-                    .right(riskText)
-                    .rightColor(riskColor)
-                    .build();
-            panelComponent.getChildren().add(riskLine);
+            panelComponent.getChildren().add(
+                    LineComponent.builder()
+                            .left("RISK:")
+                            .leftColor(RISK_LABEL_COLOR)
+                            .right(riskText)
+                            .rightColor(riskColor)
+                            .build());
         }
         return super.render(graphics);
     }
 
-    // --- determineAttackStyle ---
-    // Hvis ingen våpen finnes (weaponId == -1), returneres "Melee"
+    // determineAttackStyle – oppdatert med nye nøkkelord
     private String determineAttackStyle(Player player)
     {
         int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
@@ -320,16 +318,25 @@ class KPOpponentInfoOverlay extends OverlayPanel {
         if (comp == null)
             return "Unknown";
         String name = comp.getName().toLowerCase();
-        if (name.contains("knife") || name.contains("bow") || name.contains("dart") || name.contains("blowpipe"))
+        // Ranged-nøkkelord
+        if (name.contains("knife") || name.contains("bow") || name.contains("dart") ||
+                name.contains("blowpipe") || name.contains("eclipse") ||
+                name.contains("throwing") || name.contains("thrown") || name.contains("toktz-xil-ul"))
             return "Ranged";
-        else if (name.contains("staff") || name.contains("wand"))
+        // Magic-nøkkelord
+        if (name.contains("staff") || name.contains("wand") ||
+                name.contains("crozier") || name.contains("salamander"))
             return "Magic";
-        else if (name.contains("sword") || name.contains("scimitar") ||
-                name.contains("halberd") || name.contains("spear") ||
-                name.contains("whip") || name.contains("dagger") || name.contains("hasta"))
+        // Melee-nøkkelord (inkluderer nye)
+        if (name.contains("tzhaar") || name.contains("maul") || name.contains("axe") ||
+                name.contains("bulwark") || name.contains("banners") || name.contains("machete") ||
+                name.contains("mjolnir") || name.contains("scythe") || name.contains("sickle") ||
+                name.contains("cutlass") || name.contains("hammer") || name.contains("claws") ||
+                name.contains("sword") || name.contains("scimitar") || name.contains("halberd") ||
+                name.contains("spear") || name.contains("whip") || name.contains("dagger") ||
+                name.contains("hasta") || name.contains("abyssal"))
             return "Melee";
-        else
-            return "Unknown";
+        return "Unknown";
     }
 
     private String determineWeaponName(Player player)
