@@ -511,7 +511,7 @@ public interface KPOpponentInfoConfig extends Config
         }
     }
 
-    // Ny kategori: Overlay Priority
+    // Overlay Priority Section
     @ConfigSection(
             name = "Overlay Priority",
             description = "Angi prioritet (lavere tall vises først)",
@@ -575,7 +575,7 @@ public interface KPOpponentInfoConfig extends Config
         return 5;
     }
 
-    // Debug seksjon
+    // Debug Section
     @ConfigSection(
             name = "Debug",
             description = "Innstillinger for debug-overlay",
@@ -593,5 +593,36 @@ public interface KPOpponentInfoConfig extends Config
     )
     default boolean debugOverlay() {
         return false;
+    }
+
+    // Ny dropdown for Overlay Icons (Icons vs Text)
+    @ConfigItem(
+            keyName = "overlayIcons",
+            name = "Overlay Icons",
+            description = "Velg om overlay skal vise ikoner eller ren tekst.",
+            position = 11
+    )
+    default OverlayIcons overlayIcons() {
+        return OverlayIcons.ICONS;
+    }
+
+    enum OverlayIcons {
+        ICONS("Icons"),
+        TEXT("Text");
+
+        private final String display;
+
+        OverlayIcons(String display) {
+            this.display = display;
+        }
+
+        public String getDisplay() {
+            return display;
+        }
+
+        @Override
+        public String toString() {
+            return display;
+        }
     }
 }
