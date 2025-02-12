@@ -1,80 +1,530 @@
 package com.krisped;
 
-import com.google.common.base.Strings;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import javax.inject.Inject;
-import net.runelite.api.Actor;
-import net.runelite.api.Client;
-import net.runelite.api.ItemComposition;
-import net.runelite.api.NPC;
-import net.runelite.api.NPCComposition;
-import net.runelite.api.ParamID;
-import net.runelite.api.Player;
-import net.runelite.api.VarPlayer;
-import net.runelite.api.Varbits;
+import net.runelite.api.*;
 import net.runelite.api.kit.KitType;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.NPCManager;
 import net.runelite.client.game.SpriteManager;
 import net.runelite.client.hiscore.HiscoreManager;
 import net.runelite.client.hiscore.HiscoreResult;
 import net.runelite.client.hiscore.HiscoreSkill;
-import net.runelite.client.game.ItemManager;
-import net.runelite.client.ui.overlay.OverlayPanel;
-import net.runelite.client.ui.overlay.OverlayPosition;
-import net.runelite.client.ui.overlay.components.ComponentConstants;
-import net.runelite.client.ui.overlay.components.ImageComponent;
-import net.runelite.client.ui.overlay.components.ProgressBarComponent;
-import net.runelite.client.ui.overlay.components.TitleComponent;
-import net.runelite.client.ui.overlay.components.LineComponent;
-import net.runelite.client.ui.overlay.components.LayoutableRenderableEntity;
+import net.runelite.client.ui.overlay.*;
+import net.runelite.client.ui.overlay.components.*;
 import net.runelite.client.util.Text;
 
+import javax.inject.Inject;
+import java.awt.*;
+import java.awt.Point;
+import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+@SuppressWarnings("OptionalGetWithoutIsPresent")
 public class KPOpponentInfoOverlay extends OverlayPanel {
 
+    // --- FARGER ---
     private static final Color HP_GREEN = new Color(0, 146, 54, 230);
     private static final Color HP_RED = new Color(255, 0, 0, 230);
     private static final Color HP_YELLOW = new Color(255, 255, 0, 230);
     private static final Color RISK_LABEL_COLOR = Color.decode("#FFD700");
 
+    // --- IKON-IDer for "Style:" og angrepstyper ---
+    private static final int STYLE_LABEL_ICON_ID = 168;   // Ikon foran "Style:"
+    private static final int STYLE_MELEE_ICON_ID = 129;
+    private static final int STYLE_RANGED_ICON_ID = 128;
+    private static final int STYLE_MAGIC_ICON_ID = 127;
+
+    // --- Våpenikoner ---
+    private static final int CURRENT_WEAPON_ICON_ID = 197;
+    private static final int PREVIOUS_WEAPON_ICON_ID = 197;
+
+    // --- Andre ikoner ---
+    private static final int SMITED_ICON_ID = 132;
+    private static final int RISK_ICON_ID = 523;
+
+    // --- Fast bredde for linjer i IKON-modus ---
+    private static final int ICON_LINE_WIDTH = ComponentConstants.STANDARD_WIDTH;
+
     private final Client client;
-    private final KPOpponentInfoPlugin plugin;
+    private final KPOpponentInfoPlugin plugin; // Vår plugin med nødvendige metoder
     private final KPOpponentInfoConfig config;
     private final HiscoreManager hiscoreManager;
     private final NPCManager npcManager;
+
     @Inject
     private ItemManager itemManager;
     @Inject
     private SpriteManager spriteManager;
 
+    // Helseinformasjon
     private Integer lastMaxHealth;
     private int lastRatio = 0;
     private int lastHealthScale = 0;
     private String opponentName;
 
-    // Sprite-ID-er
-    private final int currentWeaponSpriteId = 168;    // For CURRENT våpen
-    private final int previousWeaponSpriteId = 168;     // For PREVIOUS våpen
-    private final int smitedSpriteId = 132;             // For Smite
-    private final int riskSpriteId = 523;               // For Risk
+    @Inject
+    public KPOpponentInfoOverlay(
+            Client client,
+            KPOpponentInfoPlugin plugin,
+            KPOpponentInfoConfig config,
+            HiscoreManager hiscoreManager,
+            NPCManager npcManager
+    ) {
+        super(plugin);
+        this.client = client;
+        this.plugin = plugin;
+        this.config = config;
+        this.hiscoreManager = hiscoreManager;
+        this.npcManager = npcManager;
 
-    // For Attack/Style-linjen:
-    private final int attackLabelSpriteId = 237;        // For label "Style:" (brukes sammen med attack style)
-    private final int meleeAttackSpriteId = 129;        // For Melee
-    private final int rangedAttackSpriteId = 128;       // For Ranged
-    private final int magicAttackSpriteId = 127;        // For Magic
+        setPosition(OverlayPosition.TOP_LEFT);
+        setPriority(OverlayPriority.HIGH);
 
-    // Intern klasse for overlay-elementer med prioritet
+        panelComponent.setBorder(new Rectangle(2, 2, 2, 2));
+        panelComponent.setGap(new Point(0, 2));
+
+        addMenuEntry(
+                MenuAction.RUNELITE_OVERLAY_CONFIG,
+                OverlayManager.OPTION_CONFIGURE,
+                "[KP] Opponent Information overlay"
+        );
+    }
+
+    @Override
+    public Dimension render(Graphics2D graphics) {
+        Font font = graphics.getFont();
+        boolean useIcons = (config.overlayIcons() == KPOpponentInfoConfig.OverlayIcons.ICONS);
+        panelComponent.getChildren().clear();
+        List<OverlayItem> overlayItems = new ArrayList<>();
+
+        // -----------------------
+        // 1) DEBUG OVERLAY (hvis ingen motstander)
+        // -----------------------
+        if (config.debugOverlay() && plugin.getLastOpponent() == null) {
+            panelComponent.getChildren().add(TitleComponent.builder().text("Debug").build());
+
+            // (a) Health Bar (debug = 100%)
+            ProgressBarComponent dbgHealth = new ProgressBarComponent();
+            dbgHealth.setMaximum(100);
+            dbgHealth.setValue(100);
+            dbgHealth.setForegroundColor(HP_GREEN);
+            dbgHealth.setBackgroundColor(new Color(0, 0, 0, 150));
+            overlayItems.add(new OverlayItem(config.healthBarPriority(), dbgHealth));
+
+            // (b) Smited
+            if (useIcons) {
+                BufferedImage icon = spriteManager.getSprite(SMITED_ICON_ID, 0);
+                if (icon != null) {
+                    icon = scaleImage(icon, 16, 16);
+                }
+                // Debug: vis "0" eller eventuelt plugin.getSmitedPrayer()
+                BufferedImage lineImg = createCompositeIconLeftRight(
+                        icon,
+                        "Smited:",
+                        "0",
+                        Color.WHITE,
+                        Color.WHITE,
+                        font,
+                        ICON_LINE_WIDTH
+                );
+                overlayItems.add(new OverlayItem(config.smitedPriority(), new ImageComponent(lineImg)));
+            } else {
+                overlayItems.add(new OverlayItem(config.smitedPriority(),
+                        LineComponent.builder()
+                                .left("Smited:")
+                                .right("0")
+                                .leftColor(Color.WHITE)
+                                .rightColor(Color.WHITE)
+                                .build()));
+            }
+
+            // (c) Attack Style – Én linje i ikonmodus (debug: "Melee")
+            if (useIcons) {
+                BufferedImage styleLine = createSingleLineStyle(font, "Melee");
+                overlayItems.add(new OverlayItem(config.attackTypePriority(), new ImageComponent(styleLine)));
+            } else {
+                overlayItems.add(new OverlayItem(config.attackTypePriority(),
+                        LineComponent.builder()
+                                .left("Style:")
+                                .right("Melee")
+                                .leftColor(new Color(173, 216, 230))
+                                .rightColor(new Color(173, 216, 230))
+                                .build()));
+            }
+
+            // (d) Current Weapon – IKON-modus: vis våpennavn høyrejustert (ingen "1:")
+            if (useIcons) {
+                BufferedImage wpnIcon = spriteManager.getSprite(CURRENT_WEAPON_ICON_ID, 0);
+                if (wpnIcon != null) {
+                    wpnIcon = scaleImage(wpnIcon, 16, 16);
+                }
+                BufferedImage lineImg = createCompositeIconLeftRight(
+                        wpnIcon,
+                        "", // Tom venstre
+                        "Current weapon",
+                        new Color(173, 216, 230),
+                        new Color(173, 216, 230),
+                        font,
+                        ICON_LINE_WIDTH
+                );
+                overlayItems.add(new OverlayItem(config.weaponPriority(), new ImageComponent(lineImg)));
+            } else {
+                overlayItems.add(new OverlayItem(config.weaponPriority(),
+                        LineComponent.builder()
+                                .left("1:")
+                                .right("Current weapon")
+                                .leftColor(new Color(173, 216, 230))
+                                .rightColor(new Color(173, 216, 230))
+                                .build()));
+            }
+
+            // (e) Previous Weapon – IKON-modus: vis våpennavn høyrejustert (ingen "2:")
+            if (useIcons) {
+                BufferedImage prevIcon = spriteManager.getSprite(PREVIOUS_WEAPON_ICON_ID, 0);
+                if (prevIcon != null) {
+                    prevIcon = scaleImage(prevIcon, 16, 16);
+                }
+                BufferedImage lineImg = createCompositeIconLeftRight(
+                        prevIcon,
+                        "", // Tom venstre
+                        "Previous weapon",
+                        new Color(173, 216, 230),
+                        new Color(173, 216, 230),
+                        font,
+                        ICON_LINE_WIDTH
+                );
+                overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1, new ImageComponent(lineImg)));
+            } else {
+                overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1,
+                        LineComponent.builder()
+                                .left("2:")
+                                .right("Previous weapon")
+                                .leftColor(new Color(173, 216, 230))
+                                .rightColor(new Color(173, 216, 230))
+                                .build()));
+            }
+
+            // (f) Risk
+            if (useIcons) {
+                BufferedImage rIcon = spriteManager.getSprite(RISK_ICON_ID, 0);
+                if (rIcon != null) {
+                    rIcon = scaleImage(rIcon, 16, 16);
+                }
+                BufferedImage lineImg = createCompositeIconLeftRight(
+                        rIcon,
+                        "Risk:",
+                        "0",
+                        RISK_LABEL_COLOR,
+                        Color.WHITE,
+                        font,
+                        ICON_LINE_WIDTH
+                );
+                overlayItems.add(new OverlayItem(config.riskPriority(), new ImageComponent(lineImg)));
+            } else {
+                overlayItems.add(new OverlayItem(config.riskPriority(),
+                        LineComponent.builder()
+                                .left("Risk:")
+                                .right("0")
+                                .leftColor(RISK_LABEL_COLOR)
+                                .rightColor(Color.WHITE)
+                                .build()));
+            }
+
+            overlayItems.sort(Comparator.comparingDouble(OverlayItem::getPriority));
+            for (OverlayItem item : overlayItems) {
+                panelComponent.getChildren().add(item.getComponent());
+            }
+            return super.render(graphics);
+        }
+
+        // -----------------------
+        // 2) NORMAL RENDERING
+        // -----------------------
+        final Actor opponent = plugin.getLastOpponent();
+        if (opponent == null) {
+            return null;
+        }
+
+        // Oppdater HP
+        if (opponent.getName() != null && opponent.getHealthScale() > 0) {
+            lastRatio = opponent.getHealthRatio();
+            lastHealthScale = opponent.getHealthScale();
+            opponentName = Text.removeTags(opponent.getName());
+            lastMaxHealth = null;
+            if (opponent instanceof NPC) {
+                NPC npc = (NPC) opponent;
+                lastMaxHealth = npcManager.getHealth(npc.getId());
+            } else if (opponent instanceof Player) {
+                Player pl = (Player) opponent;
+                HiscoreResult hiscore = hiscoreManager.lookupAsync(opponentName, plugin.getHiscoreEndpoint());
+                if (hiscore != null) {
+                    int hp = hiscore.getSkill(HiscoreSkill.HITPOINTS).getLevel();
+                    if (hp > 0) {
+                        lastMaxHealth = hp;
+                    }
+                }
+            }
+        }
+        if (opponentName == null || !config.showOpponentHealthOverlay() || hasHpHud(opponent)) {
+            return null;
+        }
+
+        panelComponent.setPreferredSize(new Dimension(ComponentConstants.STANDARD_WIDTH, 0));
+        panelComponent.getChildren().add(TitleComponent.builder().text(opponentName).build());
+
+        List<OverlayItem> normalItems = new ArrayList<>();
+
+        // (A) HP-bar
+        if (lastRatio >= 0 && lastHealthScale > 0) {
+            ProgressBarComponent hpBar = new ProgressBarComponent();
+            hpBar.setBackgroundColor(new Color(0, 0, 0, 150));
+            double healthPerc = 0;
+            int hpAbs = 0;
+            if ((config.hitpointsDisplayStyle() == HitpointsDisplayStyle.HITPOINTS ||
+                    config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH) && lastMaxHealth != null) {
+                int health = 0;
+                if (lastRatio > 0) {
+                    int minHealth = 1;
+                    int maxHealth;
+                    if (lastHealthScale > 1) {
+                        if (lastRatio > 1) {
+                            minHealth = (lastMaxHealth * (lastRatio - 1) + lastHealthScale - 2) / (lastHealthScale - 1);
+                        }
+                        maxHealth = (lastMaxHealth * lastRatio - 1) / (lastHealthScale - 1);
+                        if (maxHealth > lastMaxHealth) {
+                            maxHealth = lastMaxHealth;
+                        }
+                    } else {
+                        maxHealth = lastMaxHealth;
+                    }
+                    health = (minHealth + maxHealth + 1) / 2;
+                }
+                hpAbs = health;
+                hpBar.setMaximum(lastMaxHealth);
+                hpBar.setValue(health);
+                healthPerc = (double) health / lastMaxHealth;
+            } else {
+                float ratioF = lastRatio / (float) lastHealthScale;
+                hpBar.setValue(ratioF * 100f);
+                healthPerc = ratioF;
+            }
+            Color finalColor = HP_GREEN;
+            if (config.dynamicHealthColor()) {
+                boolean belowRed, belowYellow;
+                if (lastMaxHealth != null) {
+                    belowRed = isBelowHpOrPercent(hpAbs, healthPerc, config.redThresholdValue(), config.redThresholdUnit());
+                    belowYellow = isBelowHpOrPercent(hpAbs, healthPerc, config.yellowThresholdValue(), config.yellowThresholdUnit());
+                } else {
+                    belowRed = (healthPerc * 100) < config.redThresholdValue();
+                    belowYellow = (healthPerc * 100) < config.yellowThresholdValue();
+                }
+                if (belowRed) finalColor = HP_RED;
+                else if (belowYellow) finalColor = HP_YELLOW;
+            }
+            if (config.enableBlink()) {
+                boolean blinkActive;
+                if (lastMaxHealth != null) {
+                    blinkActive = isBelowHpOrPercent(hpAbs, healthPerc, config.blinkThresholdValue(), config.blinkThresholdUnit());
+                } else {
+                    blinkActive = (healthPerc * 100) < config.blinkThresholdValue();
+                }
+                if (blinkActive) {
+                    long now = System.currentTimeMillis();
+                    if ((now / 500) % 2 == 0) {
+                        finalColor = new Color(finalColor.getRed() / 2, finalColor.getGreen() / 2,
+                                finalColor.getBlue() / 2, finalColor.getAlpha());
+                    }
+                }
+            }
+            hpBar.setForegroundColor(finalColor);
+            if ((config.hitpointsDisplayStyle() == HitpointsDisplayStyle.HITPOINTS ||
+                    config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH) && lastMaxHealth != null) {
+                ProgressBarComponent.LabelDisplayMode mode =
+                        (config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH)
+                                ? ProgressBarComponent.LabelDisplayMode.BOTH
+                                : ProgressBarComponent.LabelDisplayMode.FULL;
+                hpBar.setLabelDisplayMode(mode);
+            }
+            normalItems.add(new OverlayItem(config.healthBarPriority(), hpBar));
+        }
+
+        // (B) Smited
+        if (config.showSmitedPrayer() && (plugin.getSmitedPrayer() > 0 || plugin.isSmiteActivated())) {
+            if (useIcons) {
+                BufferedImage icon = spriteManager.getSprite(SMITED_ICON_ID, 0);
+                if (icon != null) {
+                    icon = scaleImage(icon, 16, 16);
+                }
+                // Her bruker vi plugin.getSmitedPrayer() som høyre tekst
+                String rightText = String.valueOf(plugin.getSmitedPrayer());
+                BufferedImage lineImg = createCompositeIconLeftRight(
+                        icon,
+                        "Smited:",
+                        rightText,
+                        Color.WHITE,
+                        Color.WHITE,
+                        font,
+                        ICON_LINE_WIDTH
+                );
+                normalItems.add(new OverlayItem(config.smitedPriority(), new ImageComponent(lineImg)));
+            } else {
+                normalItems.add(new OverlayItem(config.smitedPriority(),
+                        LineComponent.builder()
+                                .left("Smited:")
+                                .right(String.valueOf(plugin.getSmitedPrayer()))
+                                .leftColor(Color.WHITE)
+                                .rightColor(Color.WHITE)
+                                .build()));
+            }
+        }
+
+        // (C) Attack style – Én linje i ikonmodus for "Style: <stiling>"
+        if (opponent instanceof Player && config.showAttackStyle()) {
+            Player p = (Player) opponent;
+            String style = determineAttackStyle(p);
+            if (useIcons) {
+                BufferedImage styleLine = createSingleLineStyle(font, style);
+                normalItems.add(new OverlayItem(config.attackTypePriority(), new ImageComponent(styleLine)));
+            } else {
+                normalItems.add(new OverlayItem(config.attackTypePriority(),
+                        LineComponent.builder()
+                                .left("Style:")
+                                .right(style)
+                                .leftColor(new Color(173, 216, 230))
+                                .rightColor(new Color(173, 216, 230))
+                                .build()));
+            }
+        }
+
+        // (D) Våpen – i ikonmodus: vis våpennavn som høyrejustert (ingen "1:" eller "2:")
+        if (opponent instanceof Player) {
+            Player p = (Player) opponent;
+            String currentWeapon = determineWeaponName(p);
+            if (plugin.getCurrentWeaponName() == null) {
+                plugin.setCurrentWeaponName(currentWeapon);
+            } else if (!plugin.getCurrentWeaponName().equals(currentWeapon)) {
+                plugin.setLastWeaponName(plugin.getCurrentWeaponName());
+                plugin.setCurrentWeaponName(currentWeapon);
+            }
+            KPOpponentInfoConfig.WeaponDisplayOption wOpt = config.weaponDisplay();
+            if (wOpt != KPOpponentInfoConfig.WeaponDisplayOption.NONE) {
+                String trimmedCurr = trimText(plugin.getCurrentWeaponName(), 50);
+                if (useIcons) {
+                    BufferedImage cIcon = spriteManager.getSprite(CURRENT_WEAPON_ICON_ID, 0);
+                    if (cIcon != null) {
+                        cIcon = scaleImage(cIcon, 16, 16);
+                    }
+                    // Tom venstre, våpennavn som høyrejustert tekst
+                    BufferedImage lineImg = createCompositeIconLeftRight(
+                            cIcon,
+                            "",
+                            trimmedCurr,
+                            new Color(173, 216, 230),
+                            new Color(173, 216, 230),
+                            font,
+                            ICON_LINE_WIDTH
+                    );
+                    normalItems.add(new OverlayItem(config.weaponPriority(), new ImageComponent(lineImg)));
+                } else {
+                    normalItems.add(new OverlayItem(config.weaponPriority(),
+                            LineComponent.builder()
+                                    .left("1:")
+                                    .right(trimmedCurr)
+                                    .leftColor(new Color(173, 216, 230))
+                                    .rightColor(new Color(173, 216, 230))
+                                    .build()));
+                }
+
+                if (wOpt == KPOpponentInfoConfig.WeaponDisplayOption.CURRENT_AND_LAST) {
+                    String lastWpn = plugin.getLastWeaponName();
+                    if (lastWpn != null && !lastWpn.isEmpty()) {
+                        String trimmedLast = trimText(lastWpn, 50);
+                        if (useIcons) {
+                            BufferedImage pIcon = spriteManager.getSprite(PREVIOUS_WEAPON_ICON_ID, 0);
+                            if (pIcon != null) {
+                                pIcon = scaleImage(pIcon, 16, 16);
+                            }
+                            BufferedImage lineImg = createCompositeIconLeftRight(
+                                    pIcon,
+                                    "",
+                                    trimmedLast,
+                                    new Color(173, 216, 230),
+                                    new Color(173, 216, 230),
+                                    font,
+                                    ICON_LINE_WIDTH
+                            );
+                            normalItems.add(new OverlayItem(config.weaponPriority() + 0.1, new ImageComponent(lineImg)));
+                        } else {
+                            normalItems.add(new OverlayItem(config.weaponPriority() + 0.1,
+                                    LineComponent.builder()
+                                            .left("2:")
+                                            .right(trimmedLast)
+                                            .leftColor(new Color(173, 216, 230))
+                                            .rightColor(new Color(173, 216, 230))
+                                            .build()));
+                        }
+                    }
+                }
+            }
+        }
+
+        // (E) Risk
+        if (opponent instanceof Player) {
+            if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
+                    config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.BOTH) {
+                Player opp = (Player) opponent;
+                long riskVal = computeRisk(opp);
+                Color riskColor = Color.WHITE;
+                if (riskVal > 0 && config.enableColorRisk()) {
+                    if (riskVal < config.lowRiskThreshold()) {
+                        riskColor = Color.WHITE;
+                    } else if (riskVal < config.highRiskThreshold()) {
+                        riskColor = config.mediumRiskColor();
+                    } else if (riskVal < config.insaneRiskThreshold()) {
+                        riskColor = config.highRiskColor();
+                    } else {
+                        riskColor = config.insaneRiskColor();
+                    }
+                }
+                if (useIcons) {
+                    BufferedImage rIcon = spriteManager.getSprite(RISK_ICON_ID, 0);
+                    if (rIcon != null) {
+                        rIcon = scaleImage(rIcon, 16, 16);
+                    }
+                    String rightVal = (riskVal > 0) ? formatWealth(riskVal) : "0";
+                    BufferedImage lineImg = createCompositeIconLeftRight(
+                            rIcon,
+                            "Risk:",
+                            rightVal,
+                            RISK_LABEL_COLOR,
+                            riskColor,
+                            font,
+                            ICON_LINE_WIDTH
+                    );
+                    normalItems.add(new OverlayItem(config.riskPriority(), new ImageComponent(lineImg)));
+                } else {
+                    normalItems.add(new OverlayItem(config.riskPriority(),
+                            LineComponent.builder()
+                                    .left("Risk:")
+                                    .right((riskVal > 0) ? formatWealth(riskVal) : "0")
+                                    .leftColor(RISK_LABEL_COLOR)
+                                    .rightColor(riskColor)
+                                    .build()));
+                }
+            }
+        }
+
+        normalItems.sort(Comparator.comparingDouble(OverlayItem::getPriority));
+        for (OverlayItem item : normalItems) {
+            panelComponent.getChildren().add(item.getComponent());
+        }
+        return super.render(graphics);
+    }
+
+    // -------------------------------------------------------------------------
+    // HJELPEKLASSER OG METODER
+    // -------------------------------------------------------------------------
     private static class OverlayItem {
         private final double priority;
         private final LayoutableRenderableEntity component;
@@ -83,42 +533,58 @@ public class KPOpponentInfoOverlay extends OverlayPanel {
             this.priority = priority;
             this.component = component;
         }
-
         double getPriority() {
             return priority;
         }
-
         LayoutableRenderableEntity getComponent() {
             return component;
         }
     }
 
     /**
-     * Lager et composite-bilde ved å kombinere et ikon (sprite) med tekst.
+     * Lager en EN-linje for "Style: Melee/Ranged/Magic" i ikonmodus.
+     * Kombinerer (ikon 168 + "Style:") med (stilikon + stilenavn) i én rad.
      */
-    private BufferedImage createCompositeWeaponImage(BufferedImage icon, String text, Color textColor, Font font) {
-        int gap = (icon != null) ? 5 : 0;
-        BufferedImage temp = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D gTemp = temp.createGraphics();
-        gTemp.setFont(font);
-        FontMetrics fm = gTemp.getFontMetrics();
-        int textWidth = fm.stringWidth(text);
-        int textHeight = fm.getHeight();
-        gTemp.dispose();
-        int iconWidth = (icon != null) ? icon.getWidth() : 0;
-        int compositeWidth = iconWidth + gap + textWidth;
-        int compositeHeight = Math.max((icon != null ? icon.getHeight() : 0), textHeight);
-        BufferedImage composite = new BufferedImage(compositeWidth, compositeHeight, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D gComposite = composite.createGraphics();
-        gComposite.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        gComposite.setFont(font);
-        if (icon != null) {
-            gComposite.drawImage(icon, 0, 0, null);
+    private BufferedImage createSingleLineStyle(Font font, String styleName) {
+        // Hent ikon for "Style:" (sprite ID 168) og skaler til 16x16
+        BufferedImage styleLabelIcon = spriteManager.getSprite(STYLE_LABEL_ICON_ID, 0);
+        if (styleLabelIcon != null) {
+            styleLabelIcon = scaleImage(styleLabelIcon, 16, 16);
         }
-        gComposite.setColor(textColor);
-        gComposite.drawString(text, iconWidth + gap, fm.getAscent());
-        gComposite.dispose();
-        return composite;
+        // Bestem stilikon basert på styleName
+        int styleIconId;
+        String lower = styleName.toLowerCase();
+        if (lower.contains("ranged"))
+            styleIconId = STYLE_RANGED_ICON_ID;
+        else if (lower.contains("magic"))
+            styleIconId = STYLE_MAGIC_ICON_ID;
+        else
+            styleIconId = STYLE_MELEE_ICON_ID;
+        BufferedImage styleIcon = spriteManager.getSprite(styleIconId, 0);
+        if (styleIcon != null) {
+            styleIcon = scaleImage(styleIcon, 16, 16);
+        }
+        // Partial A: (ikon 168 + "Style:")
+        BufferedImage partialA = createCompositeIconLeftRight(
+                styleLabelIcon,
+                "Style:",
+                "",
+                new Color(173, 216, 230),
+                new Color(173, 216, 230),
+                font,
+                ICON_LINE_WIDTH / 2
+        );
+        // Partial B: (stilikon + styleName)
+        BufferedImage partialB = createCompositeIconLeftRight(
+                styleIcon,
+                styleName,
+                "",
+                new Color(173, 216, 230),
+                new Color(173, 216, 230),
+                font,
+                ICON_LINE_WIDTH / 2
+        );
+        return concatImages(partialA, partialB, 5);
     }
 
     /**
@@ -136,546 +602,167 @@ public class KPOpponentInfoOverlay extends OverlayPanel {
     }
 
     /**
-     * Lager et composite-bilde for Attack/Style-linjen.
-     * Først lages et bilde for "Style:" med sprite 237, deretter et bilde for angrepsstilen med riktig ikon
-     * (129 for Melee, 128 for Ranged, 127 for Magic) foran stilen.
-     * Til slutt kombineres de to bildene med et gap.
+     * Lager en linje med [ikon + leftText] venstrejustert og [rightText] høyrejustert
+     * i en fast bredde-linje. Hvis rightText er tom, vises bare venstre.
      */
-    private BufferedImage createAttackComposite(Graphics2D graphics, String attackStyle) {
-        Font font = graphics.getFont();
-        // Composite for "Style:"-delen med sprite 237
-        BufferedImage attackLabelSprite = spriteManager.getSprite(attackLabelSpriteId, 0);
-        BufferedImage scaledAttackLabel = (attackLabelSprite != null) ? scaleImage(attackLabelSprite, 16, 16) : null;
-        BufferedImage compositeLabel = createCompositeWeaponImage(scaledAttackLabel, "Style:", new Color(173,216,230), font);
+    private BufferedImage createCompositeIconLeftRight(
+            BufferedImage icon,
+            String leftText,
+            String rightText,
+            Color leftColor,
+            Color rightColor,
+            Font font,
+            int totalWidth
+    ) {
+        BufferedImage temp = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gTemp = temp.createGraphics();
+        gTemp.setFont(font);
+        FontMetrics fm = gTemp.getFontMetrics();
+        int leftTextWidth = fm.stringWidth(leftText);
+        int rightTextWidth = fm.stringWidth(rightText);
+        int textHeight = fm.getHeight();
+        gTemp.dispose();
 
-        // Velg riktig ikon for angrepsstilen
-        int styleSpriteId;
-        if (attackStyle.equalsIgnoreCase("Melee")) {
-            styleSpriteId = meleeAttackSpriteId;
-        } else if (attackStyle.equalsIgnoreCase("Ranged")) {
-            styleSpriteId = rangedAttackSpriteId;
-        } else if (attackStyle.equalsIgnoreCase("Magic")) {
-            styleSpriteId = magicAttackSpriteId;
-        } else {
-            styleSpriteId = meleeAttackSpriteId;
+        int iconWidth = (icon != null) ? icon.getWidth() : 0;
+        int iconHeight = (icon != null) ? icon.getHeight() : 0;
+        int lineHeight = Math.max(iconHeight, textHeight);
+        BufferedImage composite = new BufferedImage(totalWidth, lineHeight, BufferedImage.TYPE_INT_ARGB);
+
+        Graphics2D g2d = composite.createGraphics();
+        g2d.setFont(font);
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+        int xPadding = 2;
+        if (icon != null) {
+            int iconY = (lineHeight - iconHeight) / 2;
+            g2d.drawImage(icon, xPadding, iconY, null);
+            xPadding += iconWidth + 3;
         }
-        BufferedImage styleSprite = spriteManager.getSprite(styleSpriteId, 0);
-        BufferedImage scaledStyleSprite = (styleSprite != null) ? scaleImage(styleSprite, 16, 16) : null;
-        BufferedImage compositeStyle = createCompositeWeaponImage(scaledStyleSprite, attackStyle, new Color(173,216,230), font);
-
-        // Kombiner label og stil med et gap
-        return concatImages(compositeLabel, compositeStyle, 5);
+        int baseline = (lineHeight + fm.getAscent()) / 2 - 2;
+        g2d.setColor(leftColor);
+        g2d.drawString(leftText, xPadding, baseline);
+        if (!rightText.isEmpty()) {
+            int rightPadding = 5;
+            int rightX = totalWidth - rightTextWidth - rightPadding;
+            g2d.setColor(rightColor);
+            g2d.drawString(rightText, rightX, baseline);
+        }
+        g2d.dispose();
+        return composite;
     }
 
     /**
-     * HorizontalWeaponComponent lager et composite-bilde for våpenlinjen med sprite og tekst.
-     * Spritet erstatter etiketten ("1:" eller "2:").
+     * Skalerer et bilde til ønsket bredde og høyde.
      */
-    private static class HorizontalWeaponComponent implements LayoutableRenderableEntity {
-        private final BufferedImage icon;
-        private final String weaponText;
-        private final Color textColor;
-        private Dimension preferredSize = new Dimension(0, 0);
-        private Point preferredLocation = new Point(0, 0);
-
-        public HorizontalWeaponComponent(String weaponText, BufferedImage icon, Color textColor) {
-            this.weaponText = weaponText;
-            this.icon = icon;
-            this.textColor = textColor;
-        }
-
-        public Dimension render(Graphics2D graphics) {
-            FontMetrics fm = graphics.getFontMetrics();
-            int iconWidth = (icon != null) ? icon.getWidth() : 0;
-            int gap = (icon != null) ? 5 : 0;
-            int textWidth = fm.stringWidth(weaponText);
-            int height = Math.max(fm.getHeight(), (icon != null) ? icon.getHeight() : 0);
-
-            if (icon != null) {
-                graphics.drawImage(icon, 0, 0, null);
-            }
-            graphics.setColor(textColor);
-            graphics.drawString(weaponText, iconWidth + gap, fm.getAscent());
-
-            int totalWidth = iconWidth + gap + textWidth;
-            preferredSize = new Dimension(totalWidth, height);
-            return preferredSize;
-        }
-
-        public void setPreferredSize(Dimension d) {
-            this.preferredSize = d;
-        }
-
-        public Dimension getPreferredSize() {
-            return preferredSize;
-        }
-
-        public void setPreferredLocation(Point p) {
-            this.preferredLocation = p;
-        }
-
-        public Point getPreferredLocation() {
-            return preferredLocation;
-        }
-
-        public Rectangle getBounds() {
-            return new Rectangle(preferredLocation, preferredSize);
-        }
-    }
-
-    // Konfigurasjonsvalg for om overlayet skal vise ikoner eller tekst.
-    // Dette forutsetter at KPOpponentInfoConfig har et enumfelt "overlayIcons" med verdiene ICONS og TEXT.
-    // For eksempel: config.overlayIcons() == KPOpponentInfoConfig.OverlayIcons.ICONS
-    // (Se config-filen for definisjon.)
-
-    @Inject
-    KPOpponentInfoOverlay(
-            Client client,
-            KPOpponentInfoPlugin plugin,
-            KPOpponentInfoConfig config,
-            HiscoreManager hiscoreManager,
-            NPCManager npcManager
-    ) {
-        super(plugin);
-        this.client = client;
-        this.plugin = plugin;
-        this.config = config;
-        this.hiscoreManager = hiscoreManager;
-        this.npcManager = npcManager;
-        setPosition(OverlayPosition.TOP_LEFT);
-        setPriority(PRIORITY_HIGH);
-        panelComponent.setBorder(new Rectangle(2, 2, 2, 2));
-        panelComponent.setGap(new Point(0, 2));
-        addMenuEntry(net.runelite.api.MenuAction.RUNELITE_OVERLAY_CONFIG,
-                net.runelite.client.ui.overlay.OverlayManager.OPTION_CONFIGURE,
-                "[KP] Opponent Information overlay");
-    }
-
-    @Override
-    public Dimension render(Graphics2D graphics) {
-        // Bestem om vi skal bruke ikoner (composite bilder) eller ren tekst
-        boolean useIcons = (config.overlayIcons() == KPOpponentInfoConfig.OverlayIcons.ICONS);
-        List<OverlayItem> overlayItems = new ArrayList<>();
-        panelComponent.getChildren().clear();
-
-        // DEBUG-modus
-        if (config.debugOverlay() && plugin.getLastOpponent() == null) {
-            panelComponent.getChildren().add(TitleComponent.builder().text("Debug").build());
-
-            // Health Bar
-            ProgressBarComponent debugHealth = new ProgressBarComponent();
-            debugHealth.setMaximum(100);
-            debugHealth.setValue(100);
-            debugHealth.setForegroundColor(HP_GREEN);
-            debugHealth.setBackgroundColor(new Color(0, 0, 0, 150));
-            overlayItems.add(new OverlayItem(config.healthBarPriority(), debugHealth));
-
-            // Smited
-            if (useIcons) {
-                BufferedImage debugSmitedSprite = spriteManager.getSprite(smitedSpriteId, 0);
-                BufferedImage scaledDebugSmited = (debugSmitedSprite != null) ? scaleImage(debugSmitedSprite, 16, 16) : null;
-                String debugSmitedText = "Smited: 0";
-                BufferedImage compositeDebugSmited = createCompositeWeaponImage(scaledDebugSmited, debugSmitedText, Color.WHITE, graphics.getFont());
-                ImageComponent debugSmitedComponent = new ImageComponent(compositeDebugSmited);
-                debugSmitedComponent.setPreferredSize(new Dimension(compositeDebugSmited.getWidth(), compositeDebugSmited.getHeight()));
-                overlayItems.add(new OverlayItem(config.smitedPriority(), debugSmitedComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.smitedPriority(),
-                        LineComponent.builder().left("Smited:").right("0").leftColor(Color.WHITE).rightColor(Color.WHITE).build()));
-            }
-
-            // Attack / Style
-            if (useIcons) {
-                String debugAttackStyle = "Melee"; // for debug
-                BufferedImage compositeDebugAttack = createAttackComposite(graphics, debugAttackStyle);
-                ImageComponent debugAttackComponent = new ImageComponent(compositeDebugAttack);
-                debugAttackComponent.setPreferredSize(new Dimension(compositeDebugAttack.getWidth(), compositeDebugAttack.getHeight()));
-                overlayItems.add(new OverlayItem(config.attackTypePriority(), debugAttackComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.attackTypePriority(),
-                        LineComponent.builder().left("Style:").right("Melee").leftColor(new Color(173,216,230)).rightColor(new Color(173,216,230)).build()));
-            }
-
-            // CURRENT weapon
-            if (useIcons) {
-                BufferedImage debugWeaponSprite = spriteManager.getSprite(currentWeaponSpriteId, 0);
-                BufferedImage scaledDebugWeapon = (debugWeaponSprite != null) ? scaleImage(debugWeaponSprite, 16, 16) : null;
-                String debugWeaponText = "1: " + trimText("Current weapon", 50);
-                BufferedImage compositeDebugWeapon = createCompositeWeaponImage(scaledDebugWeapon, debugWeaponText, new Color(173,216,230), graphics.getFont());
-                ImageComponent debugWeaponComponent = new ImageComponent(compositeDebugWeapon);
-                debugWeaponComponent.setPreferredSize(new Dimension(compositeDebugWeapon.getWidth(), compositeDebugWeapon.getHeight()));
-                overlayItems.add(new OverlayItem(config.weaponPriority(), debugWeaponComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.weaponPriority(),
-                        LineComponent.builder().left("1:").right(trimText("Current weapon", 50))
-                                .leftColor(new Color(173,216,230)).rightColor(new Color(173,216,230)).build()));
-            }
-
-            // PREVIOUS weapon (DEBUG) – valgfritt
-            if (useIcons) {
-                BufferedImage debugWeaponSprite = spriteManager.getSprite(currentWeaponSpriteId, 0);
-                BufferedImage scaledDebugWeapon = (debugWeaponSprite != null) ? scaleImage(debugWeaponSprite, 16, 16) : null;
-                String debugPrevText = "2: " + trimText("Previous weapon", 50);
-                BufferedImage compositeDebugPrevWeapon = createCompositeWeaponImage(scaledDebugWeapon, debugPrevText, new Color(173,216,230), graphics.getFont());
-                ImageComponent debugPrevComponent = new ImageComponent(compositeDebugPrevWeapon);
-                debugPrevComponent.setPreferredSize(new Dimension(compositeDebugPrevWeapon.getWidth(), compositeDebugPrevWeapon.getHeight()));
-                overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1, debugPrevComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1,
-                        LineComponent.builder().left("2:").right(trimText("Previous weapon", 50))
-                                .leftColor(new Color(173,216,230)).rightColor(new Color(173,216,230)).build()));
-            }
-
-            // Risk
-            if (useIcons) {
-                BufferedImage debugRiskSprite = spriteManager.getSprite(riskSpriteId, 0);
-                BufferedImage scaledDebugRisk = (debugRiskSprite != null) ? scaleImage(debugRiskSprite, 16, 16) : null;
-                String debugRiskText = "Risk: 0";
-                BufferedImage compositeDebugRisk = createCompositeWeaponImage(scaledDebugRisk, debugRiskText, RISK_LABEL_COLOR, graphics.getFont());
-                ImageComponent debugRiskComponent = new ImageComponent(compositeDebugRisk);
-                debugRiskComponent.setPreferredSize(new Dimension(compositeDebugRisk.getWidth(), compositeDebugRisk.getHeight()));
-                overlayItems.add(new OverlayItem(config.riskPriority(), debugRiskComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.riskPriority(),
-                        LineComponent.builder().left("Risk:").right("0").leftColor(RISK_LABEL_COLOR).rightColor(Color.WHITE).build()));
-            }
-
-            overlayItems.sort(Comparator.comparingDouble(OverlayItem::getPriority));
-            for (OverlayItem item : overlayItems) {
-                panelComponent.getChildren().add(item.getComponent());
-            }
-            return super.render(graphics);
-        }
-
-        // NORMAL rendering (mot aktiv opponent)
-        final Actor opponent = plugin.getLastOpponent();
-        if (opponent == null)
-            return null;
-        if (opponent.getName() != null && opponent.getHealthScale() > 0) {
-            lastRatio = opponent.getHealthRatio();
-            lastHealthScale = opponent.getHealthScale();
-            opponentName = Text.removeTags(opponent.getName());
-            lastMaxHealth = null;
-            if (opponent instanceof NPC) {
-                NPCComposition composition = ((NPC) opponent).getTransformedComposition();
-                if (composition != null) {
-                    String longName = composition.getStringValue(ParamID.NPC_HP_NAME);
-                    if (!Strings.isNullOrEmpty(longName))
-                        opponentName = longName;
-                }
-                lastMaxHealth = npcManager.getHealth(((NPC) opponent).getId());
-            } else if (opponent instanceof Player) {
-                final HiscoreResult hiscoreResult = hiscoreManager.lookupAsync(opponentName, plugin.getHiscoreEndpoint());
-                if (hiscoreResult != null) {
-                    final int hp = hiscoreResult.getSkill(HiscoreSkill.HITPOINTS).getLevel();
-                    if (hp > 0)
-                        lastMaxHealth = hp;
-                }
-            }
-        }
-        if (opponentName == null || hasHpHud(opponent) || !config.showOpponentHealthOverlay())
-            return null;
-
-        FontMetrics fm = graphics.getFontMetrics(graphics.getFont());
-        int opponentWidth = fm.stringWidth(opponentName) + ComponentConstants.STANDARD_BORDER * 2;
-        int panelWidth = Math.max(ComponentConstants.STANDARD_WIDTH, opponentWidth);
-        panelComponent.setPreferredSize(new Dimension(panelWidth, 0));
-        panelComponent.getChildren().add(TitleComponent.builder().text(opponentName).build());
-
-        // Health Bar
-        if (lastRatio >= 0 && lastHealthScale > 0) {
-            ProgressBarComponent progressBarComponent = new ProgressBarComponent();
-            progressBarComponent.setBackgroundColor(new Color(0, 0, 0, 150));
-            final HitpointsDisplayStyle displayStyle = config.hitpointsDisplayStyle();
-            double healthPercentage = 0;
-            int currentHealthAbsolute = 0;
-            if ((displayStyle == HitpointsDisplayStyle.HITPOINTS || displayStyle == HitpointsDisplayStyle.BOTH)
-                    && lastMaxHealth != null) {
-                int health = 0;
-                if (lastRatio > 0) {
-                    int minHealth = 1;
-                    int maxHealth;
-                    if (lastHealthScale > 1) {
-                        if (lastRatio > 1) {
-                            minHealth = (lastMaxHealth * (lastRatio - 1) + lastHealthScale - 2)
-                                    / (lastHealthScale - 1);
-                        }
-                        maxHealth = (lastMaxHealth * lastRatio - 1) / (lastHealthScale - 1);
-                        if (maxHealth > lastMaxHealth)
-                            maxHealth = lastMaxHealth;
-                    } else {
-                        maxHealth = lastMaxHealth;
-                    }
-                    health = (minHealth + maxHealth + 1) / 2;
-                }
-                currentHealthAbsolute = health;
-                progressBarComponent.setMaximum(lastMaxHealth);
-                progressBarComponent.setValue(health);
-                healthPercentage = (double) health / lastMaxHealth;
-            } else {
-                float floatRatio = lastRatio / (float) lastHealthScale;
-                progressBarComponent.setValue(floatRatio * 100d);
-                healthPercentage = lastRatio / (double) lastHealthScale;
-            }
-            Color finalColor = HP_GREEN;
-            if (config.dynamicHealthColor()) {
-                boolean belowRed, belowYellow;
-                if (lastMaxHealth != null) {
-                    belowRed = (config.redThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
-                            ? currentHealthAbsolute < config.redThresholdValue()
-                            : (healthPercentage * 100) < config.redThresholdValue();
-                    belowYellow = (config.yellowThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
-                            ? currentHealthAbsolute < config.yellowThresholdValue()
-                            : (healthPercentage * 100) < config.yellowThresholdValue();
-                } else {
-                    belowRed = (healthPercentage * 100) < config.redThresholdValue();
-                    belowYellow = (healthPercentage * 100) < config.yellowThresholdValue();
-                }
-                if (belowRed)
-                    finalColor = HP_RED;
-                else if (belowYellow)
-                    finalColor = HP_YELLOW;
-            }
-            if (config.enableBlink()) {
-                boolean blinkActive;
-                if (lastMaxHealth != null) {
-                    blinkActive = (config.blinkThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.HP)
-                            ? currentHealthAbsolute < config.blinkThresholdValue()
-                            : (healthPercentage * 100) < config.blinkThresholdValue();
-                } else {
-                    blinkActive = (healthPercentage * 100) < config.blinkThresholdValue();
-                }
-                if (blinkActive) {
-                    long time = System.currentTimeMillis();
-                    if ((time / 500) % 2 == 0)
-                        finalColor = new Color(finalColor.getRed() / 2,
-                                finalColor.getGreen() / 2,
-                                finalColor.getBlue() / 2,
-                                finalColor.getAlpha());
-                }
-            }
-            progressBarComponent.setForegroundColor(finalColor);
-            if ((config.hitpointsDisplayStyle() == HitpointsDisplayStyle.HITPOINTS ||
-                    config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH)
-                    && lastMaxHealth != null) {
-                ProgressBarComponent.LabelDisplayMode mode = config.hitpointsDisplayStyle() == HitpointsDisplayStyle.BOTH
-                        ? ProgressBarComponent.LabelDisplayMode.BOTH
-                        : ProgressBarComponent.LabelDisplayMode.FULL;
-                progressBarComponent.setLabelDisplayMode(mode);
-            }
-            overlayItems.add(new OverlayItem(config.healthBarPriority(), progressBarComponent));
-            plugin.setLastDynamicColor(finalColor);
-        }
-
-        // Smited (NORMAL)
-        if (config.showSmitedPrayer() && (plugin.getSmitedPrayer() > 0 || plugin.isSmiteActivated())) {
-            if (useIcons) {
-                BufferedImage smitedSprite = spriteManager.getSprite(smitedSpriteId, 0);
-                BufferedImage scaledSmitedSprite = (smitedSprite != null) ? scaleImage(smitedSprite, 16, 16) : null;
-                String smitedText = "Smited: " + plugin.getSmitedPrayer();
-                BufferedImage compositeSmited = createCompositeWeaponImage(scaledSmitedSprite, smitedText, Color.WHITE, graphics.getFont());
-                ImageComponent smitedComponent = new ImageComponent(compositeSmited);
-                smitedComponent.setPreferredSize(new Dimension(compositeSmited.getWidth(), compositeSmited.getHeight()));
-                overlayItems.add(new OverlayItem(config.smitedPriority(), smitedComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.smitedPriority(),
-                        LineComponent.builder().left("Smited:").right("" + plugin.getSmitedPrayer())
-                                .leftColor(Color.WHITE).rightColor(Color.WHITE).build()));
-            }
-        }
-
-        // Attack / Style (NORMAL)
-        if (opponent instanceof Player && config.showAttackStyle()) {
-            Player targetPlayer = (Player) opponent;
-            String attackStyle = determineAttackStyle(targetPlayer);
-            if (useIcons) {
-                BufferedImage compositeAttack = createAttackComposite(graphics, attackStyle);
-                ImageComponent attackComponent = new ImageComponent(compositeAttack);
-                attackComponent.setPreferredSize(new Dimension(compositeAttack.getWidth(), compositeAttack.getHeight()));
-                overlayItems.add(new OverlayItem(config.attackTypePriority(), attackComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.attackTypePriority(),
-                        LineComponent.builder().left("Style:").right(attackStyle)
-                                .leftColor(new Color(173,216,230)).rightColor(new Color(173,216,230)).build()));
-            }
-        }
-
-        // Weapons (NORMAL)
-        if (opponent instanceof Player) {
-            Player targetPlayer = (Player) opponent;
-            String currentWeapon = determineWeaponName(targetPlayer);
-            if (plugin.getCurrentWeaponName() == null) {
-                plugin.setCurrentWeaponName(currentWeapon);
-            } else if (!plugin.getCurrentWeaponName().equals(currentWeapon)) {
-                plugin.setLastWeaponName(plugin.getCurrentWeaponName());
-                plugin.setCurrentWeaponName(currentWeapon);
-            }
-            KPOpponentInfoConfig.WeaponDisplayOption weaponOption = config.weaponDisplay();
-            if (weaponOption != KPOpponentInfoConfig.WeaponDisplayOption.NONE) {
-                if (useIcons) {
-                    // CURRENT weapon: bruk sprite 168 med etikett "1:"
-                    BufferedImage weaponSprite = spriteManager.getSprite(currentWeaponSpriteId, 0);
-                    BufferedImage scaledWeaponSprite = (weaponSprite != null) ? scaleImage(weaponSprite, 16, 16) : null;
-                    Font font = graphics.getFont();
-                    String currentText = "1: " + trimText(currentWeapon, 50);
-                    BufferedImage compositeWeapon = createCompositeWeaponImage(scaledWeaponSprite, currentText, new Color(173,216,230), font);
-                    ImageComponent weaponComponent = new ImageComponent(compositeWeapon);
-                    weaponComponent.setPreferredSize(new Dimension(compositeWeapon.getWidth(), compositeWeapon.getHeight()));
-                    overlayItems.add(new OverlayItem(config.weaponPriority(), weaponComponent));
-                    if (weaponOption == KPOpponentInfoConfig.WeaponDisplayOption.CURRENT_AND_LAST) {
-                        String lastWeapon = plugin.getLastWeaponName();
-                        if (lastWeapon != null && !lastWeapon.isEmpty()) {
-                            // PREVIOUS weapon: bruk sprite 168 med etikett "2:"
-                            BufferedImage prevWeaponSprite = spriteManager.getSprite(previousWeaponSpriteId, 0);
-                            BufferedImage scaledPrevWeaponSprite = (prevWeaponSprite != null) ? scaleImage(prevWeaponSprite, 16, 16) : null;
-                            String prevText = "2: " + trimText(lastWeapon, 50);
-                            BufferedImage compositePrevWeapon = createCompositeWeaponImage(scaledPrevWeaponSprite, prevText, new Color(173,216,230), font);
-                            ImageComponent prevWeaponComponent = new ImageComponent(compositePrevWeapon);
-                            prevWeaponComponent.setPreferredSize(new Dimension(compositePrevWeapon.getWidth(), compositePrevWeapon.getHeight()));
-                            overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1, prevWeaponComponent));
-                        }
-                    }
-                } else {
-                    // Tekstmodus for våpen
-                    overlayItems.add(new OverlayItem(config.weaponPriority(),
-                            LineComponent.builder().left("1:").right(trimText(currentWeapon, 50))
-                                    .leftColor(new Color(173,216,230)).rightColor(new Color(173,216,230)).build()));
-                    if (weaponOption == KPOpponentInfoConfig.WeaponDisplayOption.CURRENT_AND_LAST) {
-                        String lastWeapon = plugin.getLastWeaponName();
-                        if (lastWeapon != null && !lastWeapon.isEmpty()) {
-                            overlayItems.add(new OverlayItem(config.weaponPriority() + 0.1,
-                                    LineComponent.builder().left("2:").right(trimText(lastWeapon, 50))
-                                            .leftColor(new Color(173,216,230)).rightColor(new Color(173,216,230)).build()));
-                        }
-                    }
-                }
-            }
-        }
-
-        // Risk (NORMAL)
-        if (config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.OVERLAY ||
-                config.riskDisplayOption() == KPOpponentInfoConfig.RiskDisplayOption.BOTH) {
-            long riskValue = computeRisk((Player) opponent);
-            Color riskColor = Color.WHITE;
-            if (riskValue > 0 && config.enableColorRisk()) {
-                if (riskValue < config.lowRiskThreshold())
-                    riskColor = Color.WHITE;
-                else if (riskValue < config.highRiskThreshold())
-                    riskColor = config.mediumRiskColor();
-                else if (riskValue < config.insaneRiskThreshold())
-                    riskColor = config.highRiskColor();
-                else
-                    riskColor = config.insaneRiskColor();
-            }
-            if (useIcons) {
-                BufferedImage riskSprite = spriteManager.getSprite(riskSpriteId, 0);
-                BufferedImage scaledRiskSprite = (riskSprite != null) ? scaleImage(riskSprite, 16, 16) : null;
-                String riskText = "Risk: " + (riskValue > 0 ? formatWealth(riskValue) : "0");
-                BufferedImage compositeRisk = createCompositeWeaponImage(scaledRiskSprite, riskText, riskColor, graphics.getFont());
-                ImageComponent riskComponent = new ImageComponent(compositeRisk);
-                riskComponent.setPreferredSize(new Dimension(compositeRisk.getWidth(), compositeRisk.getHeight()));
-                overlayItems.add(new OverlayItem(config.riskPriority(), riskComponent));
-            } else {
-                overlayItems.add(new OverlayItem(config.riskPriority(),
-                        LineComponent.builder().left("Risk:").right(riskValue > 0 ? formatWealth(riskValue) : "0")
-                                .leftColor(RISK_LABEL_COLOR).rightColor(Color.WHITE).build()));
-            }
-        }
-
-        overlayItems.sort(Comparator.comparingDouble(OverlayItem::getPriority));
-        for (OverlayItem item : overlayItems) {
-            panelComponent.getChildren().add(item.getComponent());
-        }
-        return super.render(graphics);
-    }
-
-    private String trimText(String text, int maxLength) {
-        if (text == null)
-            return "";
-        if (text.length() > maxLength)
-            return text.substring(0, maxLength - 3) + "...";
-        return text;
-    }
-
-    private BufferedImage scaleImage(BufferedImage src, int newWidth, int newHeight) {
-        BufferedImage scaled = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
+    private BufferedImage scaleImage(BufferedImage src, int w, int h) {
+        if (src == null) return null;
+        BufferedImage scaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = scaled.createGraphics();
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g2d.drawImage(src, 0, 0, newWidth, newHeight, null);
+        g2d.drawImage(src, 0, 0, w, h, null);
         g2d.dispose();
         return scaled;
     }
 
-    private String determineAttackStyle(Player player) {
-        int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
-        if (weaponId == -1)
-            return "Melee";
-        ItemComposition comp = itemManager.getItemComposition(weaponId);
-        if (comp == null)
-            return "Unknown";
-        String name = comp.getName().toLowerCase();
-        if (name.contains("knife") || name.contains("bow") || name.contains("dart") ||
-                name.contains("blowpipe") || name.contains("eclipse") ||
-                name.contains("throwing") || name.contains("thrown") || name.contains("toktz-xil-ul"))
-            return "Ranged";
-        if (name.contains("staff") || name.contains("wand") ||
-                name.contains("crozier") || name.contains("salamander"))
-            return "Magic";
-        if (name.contains("tzhaar") || name.contains("maul") || name.contains("axe") ||
-                name.contains("bulwark") || name.contains("banners") || name.contains("machete") ||
-                name.contains("mjolnir") || name.contains("scythe") || name.contains("sickle") ||
-                name.contains("cutlass") || name.contains("hammer") || name.contains("claws") ||
-                name.contains("sword") || name.contains("scimitar") || name.contains("halberd") ||
-                name.contains("spear") || name.contains("whip") || name.contains("dagger") ||
-                name.contains("hasta") || name.contains("blade") || name.contains("abyssal"))
-            return "Melee";
-        return "Unknown";
+    /**
+     * Sjekker om HP er under en gitt threshold (tolket i HP eller prosent).
+     */
+    private boolean isBelowHpOrPercent(int hpAbs, double healthPerc, int thresholdValue, KPOpponentInfoConfig.ThresholdUnit unit) {
+        if (unit == KPOpponentInfoConfig.ThresholdUnit.PERCENT) {
+            return (healthPerc * 100) < thresholdValue;
+        } else {
+            return hpAbs < thresholdValue;
+        }
     }
 
-    private String determineWeaponName(Player player) {
-        int weaponId = player.getPlayerComposition().getEquipmentId(KitType.WEAPON);
-        if (weaponId == -1)
-            return "None";
-        ItemComposition comp = itemManager.getItemComposition(weaponId);
-        if (comp == null)
-            return "Unknown";
-        return comp.getName();
-    }
-
+    /**
+     * Sjekker om motstander har aktiv boss-overlay (HP HUD).
+     */
     private boolean hasHpHud(Actor opponent) {
         boolean settingEnabled = client.getVarbitValue(Varbits.BOSS_HEALTH_OVERLAY) == 0;
         if (settingEnabled && opponent instanceof NPC) {
-            int opponentId = client.getVarpValue(VarPlayer.HP_HUD_NPC_ID);
+            int oppId = client.getVarpValue(VarPlayer.HP_HUD_NPC_ID);
             NPC npc = (NPC) opponent;
-            return opponentId != -1 && npc.getComposition() != null &&
-                    opponentId == npc.getComposition().getId();
+            return (oppId != -1 && npc.getComposition() != null && oppId == npc.getComposition().getId());
         }
         return false;
     }
 
-    private long computeRisk(Player opponent) {
-        long totalWealth = 0;
-        for (KitType kitType : KitType.values()) {
-            int itemId = opponent.getPlayerComposition().getEquipmentId(kitType);
-            if (itemId != -1) {
-                long price = itemManager.getItemPrice(itemId);
-                totalWealth += price;
-            }
+    private String trimText(String text, int maxLength) {
+        if (text == null) return "";
+        if (text.length() > maxLength) {
+            return text.substring(0, maxLength - 3) + "...";
         }
-        return totalWealth;
+        return text;
     }
 
-    private static String formatWealth(long value) {
-        if (value < 1000)
+    /**
+     * Bestemmer attack style ("Melee", "Ranged", "Magic") basert på våpennavn.
+     * Inkluderer at "eclipse" regnes som Ranged, og nå også at "anchor" blir behandlet som Melee.
+     */
+    private String determineAttackStyle(Player p) {
+        int weaponId = p.getPlayerComposition().getEquipmentId(KitType.WEAPON);
+        if (weaponId == -1) return "Melee";
+        ItemComposition comp = itemManager.getItemComposition(weaponId);
+        if (comp == null) return "Unknown";
+        String name = comp.getName().toLowerCase();
+        if (name.contains("knife") || name.contains("bow") || name.contains("dart")
+                || name.contains("blowpipe") || name.contains("throwing") || name.contains("thrown")
+                || name.contains("toktz-xil-ul") || name.contains("eclipse")) {
+            return "Ranged";
+        }
+        if (name.contains("staff") || name.contains("wand") || name.contains("crozier") || name.contains("salamander")) {
+            return "Magic";
+        }
+        if (name.contains("tzhaar") || name.contains("maul") || name.contains("axe")
+                || name.contains("bulwark") || name.contains("banners") || name.contains("machete")
+                || name.contains("mjolnir") || name.contains("scythe") || name.contains("sickle")
+                || name.contains("cutlass") || name.contains("hammer") || name.contains("claws")
+                || name.contains("sword") || name.contains("scimitar") || name.contains("halberd")
+                || name.contains("spear") || name.contains("whip") || name.contains("dagger")
+                || name.contains("hasta") || name.contains("blade") || name.contains("abyssal")
+                || name.contains("anchor")) {
+            return "Melee";
+        }
+        return "Unknown";
+    }
+
+    /**
+     * Bestemmer våpenets navn, eller "None" hvis ingen våpen.
+     */
+    private String determineWeaponName(Player p) {
+        int wpnId = p.getPlayerComposition().getEquipmentId(KitType.WEAPON);
+        if (wpnId == -1) return "None";
+        ItemComposition comp = itemManager.getItemComposition(wpnId);
+        if (comp == null) return "Unknown";
+        return comp.getName();
+    }
+
+    /**
+     * Beregner total verdi (risk) av utstyret.
+     */
+    private long computeRisk(Player p) {
+        long total = 0;
+        for (KitType kit : KitType.values()) {
+            int itemId = p.getPlayerComposition().getEquipmentId(kit);
+            if (itemId != -1) {
+                total += itemManager.getItemPrice(itemId);
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Formaterer verdien til en lesbar streng, f.eks. "850K" eller "1.2M".
+     */
+    private String formatWealth(long value) {
+        if (value < 1000) {
             return Long.toString(value);
-        else if (value < 1000000) {
-            long thousands = value / 1000;
-            return thousands + "K";
+        } else if (value < 1_000_000) {
+            return (value / 1000) + "K";
         } else {
-            double millions = value / 1000000.0;
-            String formatted = String.format("%.1f", millions);
-            formatted = formatted.replace('.', ',');
-            return formatted + "M";
+            double millions = value / 1_000_000.0;
+            return String.format("%.1fM", millions);
         }
     }
 }
