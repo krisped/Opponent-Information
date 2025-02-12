@@ -10,16 +10,13 @@ import net.runelite.client.config.ConfigSection;
 @ConfigGroup("kp_opponentinfo")
 public interface KPOpponentInfoConfig extends Config
 {
-    // Generelle innstillinger
     @ConfigItem(
             keyName = "lookupOnInteraction",
             name = "Lookup players on interaction",
             description = "Display a combat stat comparison panel on player interaction (Attack, Trade, etc.).",
             position = 0
     )
-    default boolean lookupOnInteraction() {
-        return false;
-    }
+    default boolean lookupOnInteraction() { return false; }
 
     @ConfigItem(
             keyName = "hitpointsDisplayStyle",
@@ -27,9 +24,7 @@ public interface KPOpponentInfoConfig extends Config
             description = "Show opponent's hitpoints as a value, percentage, or both.",
             position = 1
     )
-    default HitpointsDisplayStyle hitpointsDisplayStyle() {
-        return HitpointsDisplayStyle.HITPOINTS;
-    }
+    default HitpointsDisplayStyle hitpointsDisplayStyle() { return HitpointsDisplayStyle.HITPOINTS; }
 
     @ConfigItem(
             keyName = "showOpponentsInMenu",
@@ -37,9 +32,7 @@ public interface KPOpponentInfoConfig extends Config
             description = "Marks opponents' names in the menu (NPC only).",
             position = 2
     )
-    default boolean showOpponentsInMenu() {
-        return false;
-    }
+    default boolean showOpponentsInMenu() { return false; }
 
     @ConfigItem(
             keyName = "showOpponentHealthOverlay",
@@ -47,21 +40,17 @@ public interface KPOpponentInfoConfig extends Config
             description = "Shows a health bar overlay when a boss overlay is not present.",
             position = 3
     )
-    default boolean showOpponentHealthOverlay() {
-        return true;
-    }
+    default boolean showOpponentHealthOverlay() { return true; }
 
     @ConfigItem(
             keyName = "overlayDisplayDuration",
             name = "Overlay Display Duration (seconds)",
-            description = "The number of seconds before the overlay automatically disappears.",
+            description = "Number of seconds before the overlay automatically disappears.",
             position = 4
     )
-    default int overlayDisplayDuration() {
-        return 5;
-    }
+    default int overlayDisplayDuration() { return 5; }
 
-    // Extended Features Section
+    // Extended Features
     @ConfigSection(
             name = "Extended Features",
             description = "Options for risk display and target combat details.",
@@ -70,7 +59,6 @@ public interface KPOpponentInfoConfig extends Config
     )
     String extendedFeatures = "extendedFeatures";
 
-    // Checkbox for Attack Style
     @ConfigItem(
             keyName = "showAttackStyle",
             name = "Show Attack Style",
@@ -78,11 +66,8 @@ public interface KPOpponentInfoConfig extends Config
             position = 0,
             section = extendedFeatures
     )
-    default boolean showAttackStyle() {
-        return false;
-    }
+    default boolean showAttackStyle() { return false; }
 
-    // Dropdown for Weapon Display
     @ConfigItem(
             keyName = "weaponDisplay",
             name = "Weapon Display",
@@ -90,29 +75,19 @@ public interface KPOpponentInfoConfig extends Config
             position = 1,
             section = extendedFeatures
     )
-    default WeaponDisplayOption weaponDisplay() {
-        return WeaponDisplayOption.NONE;
-    }
+    default WeaponDisplayOption weaponDisplay() { return WeaponDisplayOption.NONE; }
 
-    enum WeaponDisplayOption {
+    enum WeaponDisplayOption
+    {
         NONE("None"),
         CURRENT("Current"),
         CURRENT_AND_LAST("Current & Last");
 
         private final String display;
-
-        WeaponDisplayOption(String display) {
-            this.display = display;
-        }
-
-        public String getDisplay() {
-            return display;
-        }
-
+        WeaponDisplayOption(String display){ this.display=display; }
+        public String getDisplay(){ return display; }
         @Override
-        public String toString() {
-            return display;
-        }
+        public String toString(){ return display; }
     }
 
     @ConfigItem(
@@ -122,18 +97,61 @@ public interface KPOpponentInfoConfig extends Config
             position = 2,
             section = extendedFeatures
     )
-    default boolean showSmitedPrayer() {
-        return false;
+    default boolean showSmitedPrayer() { return false; }
+
+    // Toggle for AttackStyle/Weapon: Icons vs Text
+    @ConfigItem(
+            keyName = "overlayIcons",
+            name = "Overlay Icons",
+            description = "Velg om overlay skal vise ikoner eller ren tekst for Attack Style / Weapon",
+            position = 3,
+            section = extendedFeatures
+    )
+    default OverlayIcons overlayIcons() { return OverlayIcons.ICONS; }
+
+    enum OverlayIcons
+    {
+        ICONS("Icons"),
+        TEXT("Text");
+
+        private final String display;
+        OverlayIcons(String display) { this.display=display; }
+        public String getDisplay(){ return display; }
+        @Override
+        public String toString(){ return display; }
     }
 
-    // Dynamic Bar Settings Section
+    // Spell-linje: None, Text, Icons
+    enum SpellDisplayMode
+    {
+        NONE("None"),
+        TEXT("Text"),
+        ICONS("Icons");
+
+        private final String display;
+        SpellDisplayMode(String display){this.display=display;}
+        public String getDisplay(){return display;}
+        @Override
+        public String toString(){return display;}
+    }
+
+    @ConfigItem(
+            keyName = "spellDisplayMode",
+            name = "Show Spells",
+            description = "Choose how spells are displayed: None, Text, Icons",
+            position = 4,
+            section = extendedFeatures
+    )
+    default SpellDisplayMode spellDisplayMode() { return SpellDisplayMode.NONE; }
+
+    // Dynamic Bar
     @ConfigSection(
             name = "Dynamic Bar Settings",
             description = "Settings for dynamic bar color and blinking.",
             position = 6,
             closedByDefault = true
     )
-    String dynamicBarSettings = "dynamicBarSettings";
+    String dynamicBarSettings="dynamicBarSettings";
 
     @ConfigItem(
             keyName = "dynamicHealthColor",
@@ -142,9 +160,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 0,
             section = dynamicBarSettings
     )
-    default boolean dynamicHealthColor() {
-        return false;
-    }
+    default boolean dynamicHealthColor(){return false;}
 
     @ConfigItem(
             keyName = "yellowThresholdValue",
@@ -153,9 +169,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 1,
             section = dynamicBarSettings
     )
-    default int yellowThresholdValue() {
-        return 75;
-    }
+    default int yellowThresholdValue(){return 75;}
 
     @ConfigItem(
             keyName = "yellowThresholdUnit",
@@ -164,9 +178,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 2,
             section = dynamicBarSettings
     )
-    default ThresholdUnit yellowThresholdUnit() {
-        return ThresholdUnit.PERCENT;
-    }
+    default ThresholdUnit yellowThresholdUnit(){return ThresholdUnit.PERCENT;}
 
     @ConfigItem(
             keyName = "redThresholdValue",
@@ -175,9 +187,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 3,
             section = dynamicBarSettings
     )
-    default int redThresholdValue() {
-        return 25;
-    }
+    default int redThresholdValue(){return 25;}
 
     @ConfigItem(
             keyName = "redThresholdUnit",
@@ -186,20 +196,16 @@ public interface KPOpponentInfoConfig extends Config
             position = 4,
             section = dynamicBarSettings
     )
-    default ThresholdUnit redThresholdUnit() {
-        return ThresholdUnit.HP;
-    }
+    default ThresholdUnit redThresholdUnit(){return ThresholdUnit.HP;}
 
     @ConfigItem(
             keyName = "enableBlink",
             name = "Enable Blink",
-            description = "Enable blinking effect when below blink threshold.",
+            description = "Blink effect when below blink threshold.",
             position = 5,
             section = dynamicBarSettings
     )
-    default boolean enableBlink() {
-        return false;
-    }
+    default boolean enableBlink(){return false;}
 
     @ConfigItem(
             keyName = "blinkThresholdValue",
@@ -208,9 +214,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 6,
             section = dynamicBarSettings
     )
-    default int blinkThresholdValue() {
-        return 10;
-    }
+    default int blinkThresholdValue(){return 10;}
 
     @ConfigItem(
             keyName = "blinkThresholdUnit",
@@ -219,35 +223,27 @@ public interface KPOpponentInfoConfig extends Config
             position = 7,
             section = dynamicBarSettings
     )
-    default ThresholdUnit blinkThresholdUnit() {
-        return ThresholdUnit.HP;
-    }
+    default ThresholdUnit blinkThresholdUnit(){return ThresholdUnit.HP;}
 
-    enum ThresholdUnit {
+    enum ThresholdUnit
+    {
         PERCENT("%"),
         HP("HP");
-
         private final String display;
-        ThresholdUnit(String display) {
-            this.display = display;
-        }
-        public String getDisplay() {
-            return display;
-        }
+        ThresholdUnit(String display){this.display=display;}
+        public String getDisplay(){return display;}
         @Override
-        public String toString() {
-            return display;
-        }
+        public String toString(){return display;}
     }
 
-    // Risk Settings Section
+    // Risk Settings
     @ConfigSection(
             name = "Risk Settings",
             description = "Settings for risk thresholds and colors.",
             position = 7,
             closedByDefault = true
     )
-    String riskSettings = "riskSettings";
+    String riskSettings="riskSettings";
 
     @ConfigItem(
             keyName = "riskDisplayOption",
@@ -256,131 +252,106 @@ public interface KPOpponentInfoConfig extends Config
             position = 0,
             section = riskSettings
     )
-    default RiskDisplayOption riskDisplayOption() {
-        return RiskDisplayOption.NONE;
-    }
+    default RiskDisplayOption riskDisplayOption(){return RiskDisplayOption.NONE;}
 
-    enum RiskDisplayOption {
+    enum RiskDisplayOption
+    {
         NONE("None"),
         CHAT("Chat"),
         OVERLAY("Overlay"),
         BOTH("Both");
 
         private final String display;
-        RiskDisplayOption(String display) {
-            this.display = display;
-        }
-        public String getDisplay() {
-            return display;
-        }
+        RiskDisplayOption(String display){this.display=display;}
+        public String getDisplay(){return display;}
         @Override
-        public String toString() {
-            return display;
-        }
+        public String toString(){return display;}
     }
 
     @ConfigItem(
             keyName = "enableColorRisk",
             name = "Enable Color Risk",
-            description = "If enabled, risk value is shown in a color based on thresholds; otherwise, it is always white.",
+            description = "If enabled, risk value is shown in a color based on thresholds; otherwise white.",
             position = 1,
             section = riskSettings
     )
-    default boolean enableColorRisk() {
-        return false;
-    }
+    default boolean enableColorRisk(){return false;}
 
     @ConfigItem(
             keyName = "lowRiskThreshold",
             name = "Low Risk Threshold",
-            description = "Risk threshold for low value items.",
+            description = "Risk threshold for low bracket.",
             position = 2,
             section = riskSettings
     )
-    default int lowRiskThreshold() {
-        return 20000;
-    }
+    default int lowRiskThreshold(){return 20000;} // 20k
 
     @Alpha
     @ConfigItem(
             keyName = "lowRiskColor",
             name = "Low Risk Color",
-            description = "Color for risk below the low threshold (default #FF66B2FF).",
+            description = "Color for the 'low' bracket (20k–100k).",
             position = 3,
             section = riskSettings
     )
-    default Color lowRiskColor() {
-        return new Color(0xFF66B2FF, true);
-    }
+    default Color lowRiskColor(){return new Color(0xFF66B2FF,true);}
 
     @ConfigItem(
             keyName = "mediumRiskThreshold",
             name = "Medium Risk Threshold",
-            description = "Risk threshold for medium value items.",
+            description = "Risk threshold for medium bracket.",
             position = 4,
             section = riskSettings
     )
-    default int mediumRiskThreshold() {
-        return 100000;
-    }
+    default int mediumRiskThreshold(){return 100000;} // 100k
 
     @Alpha
     @ConfigItem(
             keyName = "mediumRiskColor",
             name = "Medium Risk Color",
-            description = "Color for risk between low and high thresholds (default #FF99FF99).",
+            description = "Color for medium bracket (100k–1m).",
             position = 5,
             section = riskSettings
     )
-    default Color mediumRiskColor() {
-        return new Color(0xFF99FF99, true);
-    }
+    default Color mediumRiskColor(){return new Color(0xFF99FF99,true);}
 
     @ConfigItem(
             keyName = "highRiskThreshold",
             name = "High Risk Threshold",
-            description = "Risk threshold for high value items (risk over this becomes green).",
+            description = "Risk threshold for high bracket (1m–10m).",
             position = 6,
             section = riskSettings
     )
-    default int highRiskThreshold() {
-        return 1000000;
-    }
+    default int highRiskThreshold(){return 1_000_000;} // 1m
 
     @Alpha
     @ConfigItem(
             keyName = "highRiskColor",
             name = "High Risk Color",
-            description = "Color for risk over high threshold and under insane threshold (default #FFFF9600).",
+            description = "Color for high bracket (1m–10m).",
             position = 7,
             section = riskSettings
     )
-    default Color highRiskColor() {
-        return new Color(0xFFFF9600, true);
-    }
+    default Color highRiskColor(){return new Color(0xFFFF9600,true);}
 
     @ConfigItem(
             keyName = "insaneRiskThreshold",
             name = "Insane Risk Threshold",
-            description = "Risk threshold for insane value items (risk over this becomes pink).",
+            description = "Risk threshold for insane bracket (10m+).",
             position = 8,
             section = riskSettings
     )
-    default int insaneRiskThreshold() {
-        return 10000000;
-    }
+    default int insaneRiskThreshold(){return 10_000_000;} // 10m
 
     @Alpha
     @ConfigItem(
             keyName = "insaneRiskColor",
             name = "Insane Risk Color",
-            description = "Color for risk over insane threshold (default #FFFF62B2).",
+            description = "Color for the 'insane' bracket (10m+).",
             position = 9,
             section = riskSettings
     )
-    default Color insaneRiskColor() {
-        return new Color(0xFFFF66B2, true);
-    }
+    default Color insaneRiskColor(){return new Color(0xFFFF66B2,true);}
 
     // Highlight Section
     @ConfigSection(
@@ -389,7 +360,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 8,
             closedByDefault = true
     )
-    String highlightSection = "highlightSection";
+    String highlightSection="highlightSection";
 
     @ConfigItem(
             keyName = "outlineHighlightMode",
@@ -398,9 +369,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 0,
             section = highlightSection
     )
-    default HighlightMode outlineHighlightMode() {
-        return HighlightMode.NONE;
-    }
+    default HighlightMode outlineHighlightMode(){return HighlightMode.NONE;}
 
     @ConfigItem(
             keyName = "outlineBlink",
@@ -409,9 +378,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 1,
             section = highlightSection
     )
-    default boolean outlineBlink() {
-        return false;
-    }
+    default boolean outlineBlink(){return false;}
 
     @Alpha
     @ConfigItem(
@@ -421,9 +388,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 2,
             section = highlightSection
     )
-    default Color outlineHighlightColor() {
-        return Color.RED;
-    }
+    default Color outlineHighlightColor(){return Color.RED;}
 
     @ConfigItem(
             keyName = "hullHighlightMode",
@@ -432,9 +397,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 3,
             section = highlightSection
     )
-    default HighlightMode hullHighlightMode() {
-        return HighlightMode.NONE;
-    }
+    default HighlightMode hullHighlightMode(){return HighlightMode.NONE;}
 
     @ConfigItem(
             keyName = "hullBlink",
@@ -443,9 +406,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 4,
             section = highlightSection
     )
-    default boolean hullBlink() {
-        return false;
-    }
+    default boolean hullBlink(){return false;}
 
     @Alpha
     @ConfigItem(
@@ -455,9 +416,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 5,
             section = highlightSection
     )
-    default Color hullHighlightColor() {
-        return Color.RED;
-    }
+    default Color hullHighlightColor(){return Color.RED;}
 
     @ConfigItem(
             keyName = "tileHighlightMode",
@@ -466,9 +425,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 6,
             section = highlightSection
     )
-    default HighlightMode tileHighlightMode() {
-        return HighlightMode.NONE;
-    }
+    default HighlightMode tileHighlightMode(){return HighlightMode.NONE;}
 
     @ConfigItem(
             keyName = "tileBlink",
@@ -477,9 +434,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 7,
             section = highlightSection
     )
-    default boolean tileBlink() {
-        return false;
-    }
+    default boolean tileBlink(){return false;}
 
     @Alpha
     @ConfigItem(
@@ -489,36 +444,29 @@ public interface KPOpponentInfoConfig extends Config
             position = 8,
             section = highlightSection
     )
-    default Color tileHighlightColor() {
-        return Color.RED;
-    }
+    default Color tileHighlightColor(){return Color.RED;}
 
-    enum HighlightMode {
+    enum HighlightMode
+    {
         NONE("None"),
         STATIC("Static"),
         DYNAMIC("Dynamic");
 
         private final String display;
-        HighlightMode(String display) {
-            this.display = display;
-        }
-        public String getDisplay() {
-            return display;
-        }
+        HighlightMode(String display){this.display=display;}
+        public String getDisplay(){return display;}
         @Override
-        public String toString() {
-            return display;
-        }
+        public String toString(){return display;}
     }
 
-    // Overlay Priority Section
+    // Overlay Priority
     @ConfigSection(
             name = "Overlay Priority",
             description = "Angi prioritet (lavere tall vises først)",
             position = 9,
             closedByDefault = true
     )
-    String overlayPriority = "overlayPriority";
+    String overlayPriority="overlayPriority";
 
     @ConfigItem(
             keyName = "healthBarPriority",
@@ -527,9 +475,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 0,
             section = overlayPriority
     )
-    default int healthBarPriority() {
-        return 1;
-    }
+    default int healthBarPriority(){return 1;}
 
     @ConfigItem(
             keyName = "smitedPriority",
@@ -538,9 +484,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 1,
             section = overlayPriority
     )
-    default int smitedPriority() {
-        return 2;
-    }
+    default int smitedPriority(){return 2;}
 
     @ConfigItem(
             keyName = "attackTypePriority",
@@ -549,9 +493,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 2,
             section = overlayPriority
     )
-    default int attackTypePriority() {
-        return 3;
-    }
+    default int attackTypePriority(){return 3;}
 
     @ConfigItem(
             keyName = "weaponPriority",
@@ -560,9 +502,7 @@ public interface KPOpponentInfoConfig extends Config
             position = 3,
             section = overlayPriority
     )
-    default int weaponPriority() {
-        return 4;
-    }
+    default int weaponPriority(){return 4;}
 
     @ConfigItem(
             keyName = "riskPriority",
@@ -571,58 +511,23 @@ public interface KPOpponentInfoConfig extends Config
             position = 4,
             section = overlayPriority
     )
-    default int riskPriority() {
-        return 5;
-    }
+    default int riskPriority(){return 5;}
 
-    // Debug Section
+    // Debug
     @ConfigSection(
             name = "Debug",
             description = "Innstillinger for debug-overlay",
             position = 10,
             closedByDefault = true
     )
-    String debugSection = "debugSection";
+    String debugSection="debugSection";
 
     @ConfigItem(
             keyName = "debugOverlay",
             name = "Debug Overlay",
-            description = "Hvis aktivert, vises overlay med eksempeldata uten timer. Denne vil automatisk deaktiveres ved kamp.",
+            description = "Hvis aktivert, vises overlay med eksempeldata uten timer. Deaktiveres ved kamp.",
             position = 0,
             section = debugSection
     )
-    default boolean debugOverlay() {
-        return false;
-    }
-
-    // Ny dropdown for Overlay Icons (Icons vs Text)
-    @ConfigItem(
-            keyName = "overlayIcons",
-            name = "Overlay Icons",
-            description = "Velg om overlay skal vise ikoner eller ren tekst.",
-            position = 11
-    )
-    default OverlayIcons overlayIcons() {
-        return OverlayIcons.ICONS;
-    }
-
-    enum OverlayIcons {
-        ICONS("Icons"),
-        TEXT("Text");
-
-        private final String display;
-
-        OverlayIcons(String display) {
-            this.display = display;
-        }
-
-        public String getDisplay() {
-            return display;
-        }
-
-        @Override
-        public String toString() {
-            return display;
-        }
-    }
+    default boolean debugOverlay(){return false;}
 }
