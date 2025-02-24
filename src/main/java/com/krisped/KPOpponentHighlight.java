@@ -3,12 +3,12 @@ package com.krisped;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
+import java.awt.Polygon;
+import java.awt.Shape;
+
 import javax.inject.Inject;
-import net.runelite.api.Actor;
-import net.runelite.api.Client;
-import net.runelite.api.NPC;
-import net.runelite.api.Player;
-import net.runelite.api.Perspective;
+
+import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -39,7 +39,7 @@ public class KPOpponentHighlight extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        // Hvis alt er av, ikke highlight
+        // 1) Hvis alt highlight er av -> ingenting å gjøre
         if (config.outlineHighlightMode() == KPOpponentInfoConfig.HighlightMode.NONE
                 && config.hullHighlightMode() == KPOpponentInfoConfig.HighlightMode.NONE
                 && config.tileHighlightMode() == KPOpponentInfoConfig.HighlightMode.NONE)
@@ -47,89 +47,101 @@ public class KPOpponentHighlight extends Overlay
             return null;
         }
 
-        Actor opponent = plugin.getLastOpponent();
+        // 2) Få tak i siste motstander
+        final Actor opponent = plugin.getLastOpponent();
         if (opponent == null)
         {
             return null;
         }
 
-        // Hvis motstanderen er død => highlight forsvinner med en gang
+        // 3) Ikke highlight lokal spiller (deg selv)
+        if (opponent == client.getLocalPlayer())
+        {
+            return null;
+        }
+
+        // 4) Er motstanderen død -> ingen highlight
         if (opponent.getHealthRatio() <= 0)
         {
             return null;
         }
 
-        // Hvis NPC, men "Enable NPC Highlight" er av, returner
+        // 5) Sjekk NPC toggle
+        //    Hvis det er en NPC, men !enableNpcHighlight() => tidlig retur
         if (opponent instanceof NPC && !config.enableNpcHighlight())
         {
             return null;
         }
 
-        // Outline
+        // 6) Outline highlight
         if (config.outlineHighlightMode() != KPOpponentInfoConfig.HighlightMode.NONE)
         {
-            Color color = getHighlightColor(opponent, config.outlineHighlightMode());
-            if (config.outlineBlink() && isBlinkActive(opponent))
+            Color outlineColor = getHighlightColor(opponent, config.outlineHighlightMode(), config.outlineHighlightColor());
+            if (outlineColor != null)
             {
-                color = applyBlink(color);
-            }
+                // Sjekk om blinking skal på
+                if (config.outlineBlink() && isBlinkActive(opponent))
+                {
+                    outlineColor = applyBlink(outlineColor);
+                }
 
-            if (opponent instanceof Player)
-            {
-                modelOutlineRenderer.drawOutline((Player) opponent, 1, color, 1);
-            }
-            else if (opponent instanceof NPC)
-            {
-                modelOutlineRenderer.drawOutline((NPC) opponent, 1, color, 1);
+                // ModelOutlineRenderer krever spesifikk type (NPC/Player)
+                if (opponent instanceof NPC)
+                {
+                    modelOutlineRenderer.drawOutline((NPC) opponent, 1, outlineColor, 1);
+                }
+                else if (opponent instanceof Player)
+                {
+                    modelOutlineRenderer.drawOutline((Player) opponent, 1, outlineColor, 1);
+                }
             }
         }
 
-        // Hull
+        // 7) Hull highlight
         if (config.hullHighlightMode() != KPOpponentInfoConfig.HighlightMode.NONE)
         {
-            Color color = getHighlightColor(opponent, config.hullHighlightMode());
-            if (config.hullBlink() && isBlinkActive(opponent))
+            Color hullColor = getHighlightColor(opponent, config.hullHighlightMode(), config.hullHighlightColor());
+            if (hullColor != null)
             {
-                color = applyBlink(color);
-            }
+                if (config.hullBlink() && isBlinkActive(opponent))
+                {
+                    hullColor = applyBlink(hullColor);
+                }
 
-            Shape hull = opponent.getConvexHull();
-            if (hull != null)
-            {
-                // For litt "bredere" hull
-                Rectangle2D bounds = hull.getBounds2D();
-                double centerX = bounds.getCenterX();
-                double centerY = bounds.getCenterY();
-                double scale = 1.1;
-                AffineTransform at = AffineTransform.getTranslateInstance(centerX, centerY);
-                at.scale(scale, scale);
-                at.translate(-centerX, -centerY);
-                Shape expandedHull = at.createTransformedShape(hull);
+                Shape hull = opponent.getConvexHull();
+                if (hull != null)
+                {
+                    // For litt "bredere" hull (skalér formen ~1.1x)
+                    hull = expandShape(hull, 1.1);
 
-                graphics.setStroke(new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                graphics.setColor(color);
-                graphics.draw(expandedHull);
+                    graphics.setStroke(new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    graphics.setColor(hullColor);
+                    graphics.draw(hull);
+                }
             }
         }
 
-        // Tile
+        // 8) Tile highlight
         if (config.tileHighlightMode() != KPOpponentInfoConfig.HighlightMode.NONE)
         {
-            Color color = getHighlightColor(opponent, config.tileHighlightMode());
-            if (config.tileBlink() && isBlinkActive(opponent))
+            Color tileColor = getHighlightColor(opponent, config.tileHighlightMode(), config.tileHighlightColor());
+            if (tileColor != null)
             {
-                color = applyBlink(color);
-            }
-
-            LocalPoint lp = opponent.getLocalLocation();
-            if (lp != null)
-            {
-                Polygon tilePoly = Perspective.getCanvasTilePoly(client, lp);
-                if (tilePoly != null)
+                if (config.tileBlink() && isBlinkActive(opponent))
                 {
-                    graphics.setStroke(new BasicStroke(1));
-                    graphics.setColor(color);
-                    graphics.draw(tilePoly);
+                    tileColor = applyBlink(tileColor);
+                }
+
+                LocalPoint lp = opponent.getLocalLocation();
+                if (lp != null)
+                {
+                    Polygon tilePoly = Perspective.getCanvasTilePoly(client, lp);
+                    if (tilePoly != null)
+                    {
+                        graphics.setStroke(new BasicStroke(1));
+                        graphics.setColor(tileColor);
+                        graphics.draw(tilePoly);
+                    }
                 }
             }
         }
@@ -138,48 +150,104 @@ public class KPOpponentHighlight extends Overlay
     }
 
     /**
-     * Velger highlight-farge basert på STATIC vs DYNAMIC.
+     * Gitt highlightMode == STATIC eller DYNAMIC,
+     * returner riktig farge.
+     * STATIC -> bruk config-verdien (staticColor).
+     * DYNAMIC -> bruk "dynamic bar settings" (gul/rød/hp–avhengig).
      */
-    private Color getHighlightColor(Actor actor, KPOpponentInfoConfig.HighlightMode mode)
+    private Color getHighlightColor(Actor actor, KPOpponentInfoConfig.HighlightMode mode, Color staticColor)
     {
-        if (mode == KPOpponentInfoConfig.HighlightMode.STATIC)
+        switch (mode)
         {
-            // Avhenger av om outline/hull/tile => men du har config for hver
-            // her viser vi bare outlineHighlightColor som eks;
-            // men i praksis hentes det i kallet ovenfor
-            // Her for generalitet gir vi "dynamic" farge:
-            return Color.RED; // dead code i denne situasjonen -> vi håndterer rett i kallet
+            case NONE:
+                return null;
+            case STATIC:
+                return staticColor;
+            case DYNAMIC:
+                return getDynamicColor(actor);
+            default:
+                return null;
         }
+    }
 
-        // mode == DYNAMIC => farge basert på HP ratio
+    /**
+     * Farge basert på dine "Dynamic Bar Settings":
+     *  - redThresholdValue / redThresholdUnit
+     *  - yellowThresholdValue / yellowThresholdUnit
+     *  - dynamic av/på? (Hvis du vil sjekke config.dynamicHealthColor(), kan du trekke inn
+     *    men her antas DYNAMIC highlight skal "alltid" bruke HP-baserte farger).
+     */
+    private Color getDynamicColor(Actor actor)
+    {
+        // Hent HP ratio og scale
         int ratio = actor.getHealthRatio();
         int scale = actor.getHealthScale();
-        double healthPerc = (scale > 0) ? (double) ratio / scale : 1.0;
-        if (healthPerc >= 0.75)
+
+        // Ukjent HP => grå
+        if (ratio <= 0 || scale <= 0)
         {
-            return new Color(0, 146, 54, 230);
+            return new Color(128, 128, 128, 180);
         }
-        else if (healthPerc >= 0.25)
+
+        // healthPerc i prosent
+        double healthPerc = ((double) ratio / scale) * 100.0;
+
+        // Sjekk om vi er "under" rød-terskel
+        boolean belowRed;
+        if (config.redThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.PERCENT)
         {
+            belowRed = (healthPerc < config.redThresholdValue());
+        }
+        else
+        {
+            // Terskel i HP (f.eks. 10 HP)
+            belowRed = (ratio < config.redThresholdValue());
+        }
+
+        // Sjekk om vi er "under" gul-terskel
+        boolean belowYellow;
+        if (config.yellowThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.PERCENT)
+        {
+            belowYellow = (healthPerc < config.yellowThresholdValue());
+        }
+        else
+        {
+            belowYellow = (ratio < config.yellowThresholdValue());
+        }
+
+        if (belowRed)
+        {
+            // Rød
+            return new Color(255, 0, 0, 230);
+        }
+        else if (belowYellow)
+        {
+            // Gul
             return new Color(255, 255, 0, 230);
         }
         else
         {
-            return new Color(255, 0, 0, 230);
+            // Grønn
+            return new Color(0, 146, 54, 230);
         }
     }
 
+    /**
+     * Sjekker om blinking er aktiv for denne motstanderen
+     * basert på "blinkThresholdValue" / "blinkThresholdUnit".
+     * Samme logikk som i 'onGameTick()' for dynamic bar.
+     */
     private boolean isBlinkActive(Actor actor)
     {
-        // Bruker dynamic bar settings
+        // Vi bruker dynamic bar–terskelen for blinking
         int ratio = actor.getHealthRatio();
         int scale = actor.getHealthScale();
         if (ratio <= 0 || scale <= 0)
         {
             return false;
         }
-        double healthPerc = (double) ratio / scale;
 
+        double healthPerc = (double) ratio / scale;
         if (config.blinkThresholdUnit() == KPOpponentInfoConfig.ThresholdUnit.PERCENT)
         {
             return (healthPerc * 100.0) < config.blinkThresholdValue();
@@ -191,12 +259,15 @@ public class KPOpponentHighlight extends Overlay
         }
     }
 
+    /**
+     * "Dimmer" fargen annenhvert 500ms.
+     */
     private Color applyBlink(Color baseColor)
     {
         long now = System.currentTimeMillis();
+        // Hvert 500ms -> halver intensitet
         if ((now / 500) % 2 == 0)
         {
-            // halver intensitet
             return new Color(
                     baseColor.getRed() / 2,
                     baseColor.getGreen() / 2,
@@ -205,5 +276,22 @@ public class KPOpponentHighlight extends Overlay
             );
         }
         return baseColor;
+    }
+
+    /**
+     * Skalér (expander) formen litt, f.eks. hull, for å få en større omkrets.
+     */
+    private Shape expandShape(Shape shape, double scaleFactor)
+    {
+        Rectangle2D bounds = shape.getBounds2D();
+        double cx = bounds.getCenterX();
+        double cy = bounds.getCenterY();
+
+        AffineTransform tx = new AffineTransform();
+        tx.translate(cx, cy);
+        tx.scale(scaleFactor, scaleFactor);
+        tx.translate(-cx, -cy);
+
+        return tx.createTransformedShape(shape);
     }
 }
