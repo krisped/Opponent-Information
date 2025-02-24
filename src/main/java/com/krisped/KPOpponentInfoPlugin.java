@@ -2,7 +2,6 @@ package com.krisped;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Provides;
-import java.awt.Color;
 import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,10 +32,15 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.hiscore.HiscoreEndpoint;
+import net.runelite.client.hiscore.HiscoreManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
+/**
+ * Viser motstander-info i overlay.
+ * Merk at overlay NÅ kun trigges ved hitsplat fra deg (isMine=true).
+ */
 @PluginDescriptor(
         name = "[KP] Opponent Information",
         description = "Vis navn og hitpoints for motstanderen du kjemper med",
@@ -55,11 +59,17 @@ public class KPOpponentInfoPlugin extends Plugin
     @Inject
     private OverlayManager overlayManager;
 
+    // Overlay for HP/stats/risiko
     @Inject
     private KPOpponentInfoOverlay overlay;
 
+    // (Valgfri) Player-comparison overlay
     @Inject
     private KPPlayerComparisonOverlay comparisonOverlay;
+
+    // Highlight
+    @Inject
+    private KPOpponentHighlight opponentHighlight;
 
     @Inject
     private EventBus eventBus;
@@ -67,56 +77,44 @@ public class KPOpponentInfoPlugin extends Plugin
     @Inject
     private PlayerGearChecker playerGearChecker;
 
-    // Gjeninnfører highlight:
     @Inject
-    private KPOpponentHighlight opponentHighlight;
+    private HiscoreManager hiscoreManager;
 
     @Getter(AccessLevel.PACKAGE)
     private HiscoreEndpoint hiscoreEndpoint = HiscoreEndpoint.NORMAL;
 
-    @Getter(AccessLevel.PACKAGE)
-    @VisibleForTesting
-    private Instant lastTime;
-
+    // For sist kjente fiende
     private Actor lastOpponent;
     public Actor getLastOpponent() {
         return lastOpponent;
     }
 
-    @Getter
-    private long riskValue = 0;
-    public void setRiskValue(long riskValue) {
-        this.riskValue = riskValue;
-    }
+    @VisibleForTesting
+    private Instant lastTime;
 
-    private Color lastDynamicColor = Color.GREEN;
-    public Color getLastDynamicColor() {
-        return lastDynamicColor;
-    }
-    public void setLastDynamicColor(Color lastDynamicColor) {
-        this.lastDynamicColor = lastDynamicColor;
-    }
-
-    private int smitedPrayer = 0;
+    // For SMITE
+    private int smitedPrayer;
     public int getSmitedPrayer() {
         return smitedPrayer;
     }
-    private boolean smiteActivated = false;
+
+    private boolean smiteActivated;
     public boolean isSmiteActivated() {
         return smiteActivated;
     }
 
     private Hitsplat lastHitsplat;
 
+    // Våpen
     private String currentWeaponName;
-    private String lastWeaponName;
-
     public String getCurrentWeaponName() {
         return currentWeaponName;
     }
     public void setCurrentWeaponName(String weapon) {
         this.currentWeaponName = weapon;
     }
+
+    private String lastWeaponName;
     public String getLastWeaponName() {
         return lastWeaponName;
     }
@@ -124,7 +122,14 @@ public class KPOpponentInfoPlugin extends Plugin
         this.lastWeaponName = weapon;
     }
 
-    private boolean riskMessageSent = false;
+    // For risk
+    @Getter
+    private long riskValue;
+    public void setRiskValue(long riskValue) {
+        this.riskValue = riskValue;
+    }
+
+    private boolean riskMessageSent;
     public boolean isRiskMessageSent() {
         return riskMessageSent;
     }
@@ -132,6 +137,7 @@ public class KPOpponentInfoPlugin extends Plugin
         this.riskMessageSent = riskMessageSent;
     }
 
+    // For spells
     private String currentSpellName = "";
     public String getCurrentSpellName() {
         return currentSpellName;
@@ -151,10 +157,17 @@ public class KPOpponentInfoPlugin extends Plugin
     {
         overlayManager.add(overlay);
         overlayManager.add(comparisonOverlay);
-        overlayManager.add(opponentHighlight); // Legg til highlight
+        overlayManager.add(opponentHighlight);
 
         eventBus.register(playerGearChecker);
         eventBus.register(this);
+
+        smitedPrayer = 0;
+        smiteActivated = false;
+        riskMessageSent = false;
+        riskValue = 0;
+        lastTime = null;
+        lastOpponent = null;
     }
 
     @Override
@@ -162,18 +175,19 @@ public class KPOpponentInfoPlugin extends Plugin
     {
         overlayManager.remove(overlay);
         overlayManager.remove(comparisonOverlay);
-        overlayManager.remove(opponentHighlight); // Fjern highlight
+        overlayManager.remove(opponentHighlight);
 
         eventBus.unregister(playerGearChecker);
         eventBus.unregister(this);
 
         lastOpponent = null;
         lastTime = null;
-        smiteActivated = false;
         smitedPrayer = 0;
+        smiteActivated = false;
+        riskValue = 0;
+        riskMessageSent = false;
         currentWeaponName = null;
         lastWeaponName = null;
-        riskMessageSent = false;
         currentSpellName = "";
     }
 
@@ -186,61 +200,77 @@ public class KPOpponentInfoPlugin extends Plugin
         }
     }
 
+    /**
+     * onInteractingChanged brukes ikke til å sette motstander.
+     * -> Vi vil IKKE vise overlay før vi faktisk har truffet fienden med en hitsplat.
+     * Du kan evt. fjerne hele metoden, men her lar vi den stå tom.
+     */
     @Subscribe
     public void onInteractingChanged(InteractingChanged event)
     {
-        if (event.getSource() != client.getLocalPlayer())
-        {
-            return;
-        }
-        Actor opponent = event.getTarget();
-        if (opponent == null)
-        {
-            lastTime = Instant.now();
-            return;
-        }
-
-        if (lastOpponent != opponent)
-        {
-            smitedPrayer = 0;
-            smiteActivated = false;
-            lastTime = Instant.now();
-            currentWeaponName = null;
-            lastWeaponName = null;
-            riskMessageSent = false;
-            currentSpellName = "";
-        }
-        lastOpponent = opponent;
+        // Ingen oppdatering av lastOpponent her
+        // Fordi vi vil ikke vise overlay bare ved "Attack" klikk
+        // (Kun på hitsplat)
     }
 
+    /**
+     * Hovedmetoden: If hitsplat isMine => vi har truffet en fiende for første gang
+     * => Sett lastOpponent = event.getActor().
+     */
     @Subscribe
     public void onHitsplatApplied(HitsplatApplied event)
     {
+        // 1) Hvis hitsplaten er fra deg (isMine), oppdater lastOpponent
+        if (event.getHitsplat().isMine())
+        {
+            Actor targetActor = event.getActor();
+
+            // Pass på at actor != local player
+            if (targetActor != null && targetActor != client.getLocalPlayer())
+            {
+                if (targetActor != lastOpponent)
+                {
+                    // reset litt
+                    smitedPrayer = 0;
+                    smiteActivated = false;
+                    riskMessageSent = false;
+                    currentWeaponName = null;
+                    lastWeaponName = null;
+                    currentSpellName = "";
+                }
+
+                lastOpponent = targetActor;
+                lastTime = Instant.now();
+            }
+        }
+
+        // 2) Smite–logikk
         if (!client.isPrayerActive(Prayer.SMITE))
         {
             return;
         }
-        if (event.getActor() != lastOpponent)
+        if (event.getActor() == lastOpponent)
         {
-            return;
-        }
-        if (event.getHitsplat() == lastHitsplat)
-        {
-            return;
-        }
-        lastHitsplat = event.getHitsplat();
+            // Unngå dobbel-sjekk av samme hitsplat
+            if (event.getHitsplat() != lastHitsplat)
+            {
+                lastHitsplat = event.getHitsplat();
 
-        int damage = event.getHitsplat().getAmount();
-        int drain = damage / 4;
-        if (drain > 0)
-        {
-            smitedPrayer += drain;
-            smiteActivated = true;
-            lastTime = Instant.now();
+                int damage = event.getHitsplat().getAmount();
+                int drain = damage / 4;
+                if (drain > 0)
+                {
+                    smitedPrayer += drain;
+                    smiteActivated = true;
+                    lastTime = Instant.now();
+                }
+            }
         }
     }
 
-    // Fanger opp projectile, for spells som har projectile
+    /**
+     * Fanger opp spells (bare for info).
+     */
     @Subscribe
     public void onProjectileMoved(ProjectileMoved event)
     {
@@ -250,10 +280,8 @@ public class KPOpponentInfoPlugin extends Plugin
             return;
         }
         Actor target = projectile.getInteracting();
-        if (target == null)
-        {
-            return;
-        }
+
+        // Hvis target = localPlayer => setCurrentSpellName
         if (target == client.getLocalPlayer())
         {
             int pid = projectile.getId();
@@ -265,29 +293,30 @@ public class KPOpponentInfoPlugin extends Plugin
         }
     }
 
+    /**
+     * onGameTick: fjerner overlay hvis
+     * det har gått config.overlayDisplayDuration() sekunder siden sist
+     * vi traff fienden med en hitsplat (eller smite).
+     */
     @Subscribe
     public void onGameTick(GameTick event)
     {
-        if (client.getLocalPlayer() != null && client.getLocalPlayer().getInteracting() != null)
+        if (lastOpponent == null || lastTime == null)
         {
-            lastTime = Instant.now();
+            return;
         }
-        if (client.isPrayerActive(Prayer.SMITE))
+        long secs = Duration.between(lastTime, Instant.now()).toSeconds();
+        if (secs > config.overlayDisplayDuration())
         {
-            smiteActivated = true;
-        }
-        if (lastOpponent != null && lastTime != null)
-        {
-            long sec = Duration.between(lastTime, Instant.now()).toSeconds();
-            if (sec > config.overlayDisplayDuration())
-            {
-                lastOpponent = null;
-                smitedPrayer = 0;
-                smiteActivated = false;
-            }
+            lastOpponent = null;
+            smitedPrayer = 0;
+            smiteActivated = false;
         }
     }
 
+    /**
+     * onMenuEntryAdded: merk eventuelle fiender i menyen om config.showOpponentsInMenu().
+     */
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded event)
     {
@@ -302,14 +331,19 @@ public class KPOpponentInfoPlugin extends Plugin
         {
             return;
         }
-        MenuEntry[] entries = client.getMenuEntries();
-        entries[entries.length - 1].setTarget("*" + entries[entries.length - 1].getTarget());
-        client.setMenuEntries(entries);
+        // Hvis NPC er "vår" motstander => merk med *
+        if (npc == lastOpponent || npc.getInteracting() == client.getLocalPlayer())
+        {
+            MenuEntry[] entries = client.getMenuEntries();
+            entries[entries.length - 1].setTarget("*" + entries[entries.length - 1].getTarget());
+            client.setMenuEntries(entries);
+        }
     }
 
     @Subscribe
     public void onScriptPostFired(ScriptPostFired event)
     {
+        // Oppdater boss overlay text
         if (event.getScriptId() == ScriptID.HP_HUD_UPDATE)
         {
             updateBossHealthBarText();
@@ -336,6 +370,9 @@ public class KPOpponentInfoPlugin extends Plugin
                 break;
             case BOTH:
                 hpText.setText(hpText.getText() + " (" + getPercentText(currHp, maxHp) + ")");
+                break;
+            default:
+                // HITPOINTS => la vanilla UI vise HP
                 break;
         }
     }

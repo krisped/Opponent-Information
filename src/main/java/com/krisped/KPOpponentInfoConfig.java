@@ -116,9 +116,9 @@ public interface KPOpponentInfoConfig extends Config
 
         private final String display;
         OverlayIcons(String display) { this.display=display; }
-        public String getDisplay(){ return display; }
+        public String getDisplay(){return display;}
         @Override
-        public String toString(){ return display; }
+        public String toString(){return display;}
     }
 
     // Spell-linje: None, Text, Icons
@@ -445,6 +445,16 @@ public interface KPOpponentInfoConfig extends Config
             section = highlightSection
     )
     default Color tileHighlightColor(){return Color.RED;}
+
+    // *** ADDED: Enable NPC highlight ***
+    @ConfigItem(
+            keyName = "enableNpcHighlight",
+            name = "Enable NPC Highlight",
+            description = "Include NPCs in highlight (outline/hull/tile).",
+            position = 9,
+            section = highlightSection
+    )
+    default boolean enableNpcHighlight() { return false; }
 
     enum HighlightMode
     {
